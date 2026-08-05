@@ -1,0 +1,1 @@
+# @aether/task-registry\n\nCentral registry for all executable tasks in the Aether platform. Instead of hardcoding enums in the database, this dynamic registry defines capabilities. Workers use this to load implementations.\n

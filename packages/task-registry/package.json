@@ -1,0 +1,12 @@
+{
+  "name": "@aether/task-registry",
+  "version": "0.0.1",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "lint": "eslint src/**/*.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
