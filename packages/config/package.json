@@ -1,0 +1,14 @@
+{
+  "name": "@flowpilot/config",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node src/index.ts",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "zod": "^3.22.4",
+    "dotenv": "^16.4.5"
+  }
+}

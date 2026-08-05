@@ -1,0 +1,16 @@
+{
+  "name": "@flowpilot/logger",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node src/index.ts",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "pino": "^8.19.0"
+  },
+  "devDependencies": {
+    "pino-pretty": "^10.3.1"
+  }
+}

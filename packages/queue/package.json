@@ -1,0 +1,13 @@
+{
+  "name": "@flowpilot/queue",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node src/index.ts",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "ioredis": "^5.3.2"
+  }
+}
