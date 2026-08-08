@@ -1,7 +1,7 @@
-# Contributing to FlowPilot
+# Contributing to Aether
 
 ## 1. Purpose
-This document outlines the strict engineering standards and coding philosophy required to contribute to the FlowPilot codebase. Because we are building a production-grade orchestration engine, adhering to these standards is non-negotiable to maintain velocity and minimize technical debt.
+This document outlines the strict engineering standards and coding philosophy required to contribute to the Aether codebase. Because we are building a production-grade orchestration engine, adhering to these standards is non-negotiable to maintain velocity and minimize technical debt.
 
 ## 2. Core Architectural Philosophy
 Before writing code, internalize these rules:
