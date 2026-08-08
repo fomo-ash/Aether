@@ -1,15 +1,54 @@
 version: '3.8'
+
 services:
   postgres:
     image: postgres:15
     environment:
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
-      POSTGRES_DB: flowpilot
+      POSTGRES_DB: aether
     ports:
-      - "5434:5432"
-  
+      - "5450:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
   redis:
     image: redis:7
     ports:
-      - "6379:6379"
+      - "6850:6379"
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    ports:
+      - "3250:3250"
+    environment:
+      - DATABASE_URL=postgresql://user:password@postgres:5432/aether?schema=public
+      - REDIS_URL=redis://redis:6379
+      - PORT=3250
+    depends_on:
+      - postgres
+      - redis
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+    environment:
+      - DATABASE_URL=postgresql://user:password@postgres:5432/aether?schema=public
+      - REDIS_URL=redis://redis:6379
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+    depends_on:
+      - postgres
+      - redis
+
+  redisinsight:
+    image: redis/redisinsight:latest
+    ports:
+      - "5540:5540"
+    depends_on:
+      - redis
+
+volumes:
+  pgdata:
