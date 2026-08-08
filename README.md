@@ -1,10 +1,7 @@
-# FlowPilot
+# Aether
 
-FlowPilot is an AI Workflow Orchestrator.
-Unlike ChatGPT, which simply responds with text, FlowPilot allows an AI to PLAN, EXECUTE, MONITOR and COMPLETE real workflows.
+A multi-channel AI Commitment Engine.
 
-## Architecture Principles
-- Monorepo (Turborepo + pnpm)
-- Every service independently deployable
-- Communication via events/APIs
-- Clear separation of Planner -> Orchestrator -> Workers -> Notification
+Aether tracks what people say they will do across channels (Discord, Slack, Telegram), waits until the deadline, deterministically verifies it via external APIs (e.g., GitHub, Vercel), and updates their community reputation score based on success or failure.
+
+
