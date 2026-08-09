@@ -7,7 +7,7 @@ export const CommitmentCreateSchema = z.object({
   deadline: z.string().datetime(), // ISO 8601 string
   verifierType: z.string(),
   target: z.string(),
-  successCondition: z.string(),
+  successCondition: z.any(),
   reward: z.number().optional(),
   penalty: z.number().optional()
 });

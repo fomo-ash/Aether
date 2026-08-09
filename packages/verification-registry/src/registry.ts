@@ -1,5 +1,6 @@
 import { Verifier } from './types';
 import { GithubIssueStatusVerifier } from './providers/github/issue-status';
+import { GithubPrMergedVerifier } from './providers/github/pr-merged';
 
 export const registry = new Map<string, Verifier>();
 
@@ -9,6 +10,7 @@ function register(verifier: Verifier) {
 
 // Register all verifiers
 register(new GithubIssueStatusVerifier());
+register(new GithubPrMergedVerifier());
 
 export function getVerifier(id: string): Verifier {
   const verifier = registry.get(id);

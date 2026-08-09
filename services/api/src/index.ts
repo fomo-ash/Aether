@@ -13,6 +13,7 @@ app.get('/health', (req, res) => {
 
 // Existing synchronous route (to be deprecated/moved to testing later)
 app.post('/api/commitments', CommitmentController.create);
+app.post('/api/commitments/:id/verify', CommitmentController.verify);
 
 // New asynchronous LLM extraction route (Phase 3)
 app.post('/api/messages/parse', MessageController.parse);

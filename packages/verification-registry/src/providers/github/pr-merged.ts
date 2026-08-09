@@ -1,13 +1,9 @@
 import { Octokit } from '@octokit/rest';
 import { Verifier, VerificationPolicyContext, VerificationResult } from '../../types';
 
-export class GithubIssueStatusVerifier implements Verifier {
-  id = 'github.issue_status';
+export class GithubPrMergedVerifier implements Verifier {
+  id = 'github.pr_merged';
 
-  /**
-   * Instantiates an Octokit client using the production GitHub App installation ID,
-   * with a fallback to the environment token ONLY for local development.
-   */
   private getOctokit(context: VerificationPolicyContext): Octokit {
     if (context.githubInstallationId) {
       console.log(`[Github Auth] Using Installation ID: ${context.githubInstallationId}`);
@@ -24,44 +20,46 @@ export class GithubIssueStatusVerifier implements Verifier {
 
   async verify(context: VerificationPolicyContext): Promise<VerificationResult> {
     try {
-      // Expect target format: owner/repo#issue_number
+      // Expect target format: owner/repo#pr_number
       const match = context.target.match(/^([^/]+)\/(.+)#(\d+)$/);
       if (!match) {
         return {
           status: 'UNRESOLVED',
           observedState: 'Invalid target format',
-          payload: { error: 'Expected owner/repo#issue_number' }
+          payload: { error: 'Expected owner/repo#pr_number' }
         };
       }
 
-      const [, owner, repo, issue_number] = match;
+      const [, owner, repo, pull_number] = match;
       const octokit = this.getOctokit(context);
 
-      const { data } = await octokit.issues.get({
+      const { data } = await octokit.pulls.get({
         owner,
         repo,
-        issue_number: parseInt(issue_number, 10)
+        pull_number: parseInt(pull_number, 10)
       });
 
-      // We NEVER return the full `data` object which might contain sensitive headers/tokens
-      // Extract only the public issue payload necessary for evidence
       const safePayload = {
         id: data.id,
         number: data.number,
         state: data.state,
         title: data.title,
-        locked: data.locked
+        locked: data.locked,
+        merged: data.merged
       };
 
-      // Simple success condition evaluation: e.g. { "operator": "equals", "expected": "closed" }
+      // PR Merged verification specifically checks if merged === true
       let isSuccess = false;
-      if (context.successCondition?.operator === 'equals') {
+      if (context.successCondition?.operator === 'equals' && context.successCondition.expected === 'merged') {
+        isSuccess = data.merged === true;
+      } else if (context.successCondition?.operator === 'equals') {
+        // Fallback for just checking state === 'closed'
         isSuccess = data.state === context.successCondition.expected;
       }
 
       return {
         status: isSuccess ? 'FULFILLED' : 'MISSED',
-        observedState: data.state,
+        observedState: data.merged ? 'merged' : data.state,
         payload: safePayload
       };
     } catch (error: any) {

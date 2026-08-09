@@ -5,6 +5,7 @@ export interface VerificationPolicyContext {
   target: string;
   successCondition: any;
   configuration: any;
+  githubInstallationId?: string;
 }
 
 export interface VerificationResult {

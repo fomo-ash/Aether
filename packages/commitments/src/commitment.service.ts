@@ -1,4 +1,4 @@
-import { PrismaClient } from '@flowpilot/database';
+import { PrismaClient, Commitment } from '@flowpilot/database';
 import { CommitmentCreateDTO } from './commitment.schema';
 
 const prisma = new PrismaClient();
@@ -7,7 +7,7 @@ export class CommitmentService {
   /**
    * Creates a new commitment, sets up its verification policy, and returns the record.
    */
-  static async createCommitment(data: CommitmentCreateDTO) {
+  static async createCommitment(data: CommitmentCreateDTO): Promise<Commitment> {
     return await prisma.$transaction(async (tx: any) => {
       // 0. Upsert User and Community for smooth testing
       await tx.user.upsert({
@@ -60,6 +60,15 @@ export class CommitmentService {
       });
 
       return commitment;
+    });
+  }
+
+  /**
+   * Fetches a commitment by its ID
+   */
+  static async getCommitmentById(id: string): Promise<Commitment | null> {
+    return await prisma.commitment.findUnique({
+      where: { id }
     });
   }
 }
