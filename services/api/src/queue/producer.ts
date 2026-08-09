@@ -1,12 +1,9 @@
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
 
-const redisHost = process.env.REDIS_HOST || 'localhost';
-const redisPort = parseInt(process.env.REDIS_PORT || '6379', 10);
+const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
 
-const connection = new Redis({
-  host: redisHost,
-  port: redisPort,
+const connection = new Redis(redisUrl, {
   maxRetriesPerRequest: null,
 });
 

@@ -8,34 +8,49 @@ export class CommitmentService {
    * Creates a new commitment, sets up its verification policy, and returns the record.
    */
   static async createCommitment(data: CommitmentCreateDTO) {
-    // We use a transaction to ensure both the commitment and its policy are created together
-    return await prisma.$transaction(async (tx) => {
-      // 1. Create the verification policy
-      const policy = await tx.verificationPolicy.create({
-        data: {
-          verifierType: data.verifierType,
-          target: data.target,
-          successCondition: data.successCondition,
-        }
+    return await prisma.$transaction(async (tx: any) => {
+      // 0. Upsert User and Community for smooth testing
+      await tx.user.upsert({
+        where: { id: data.userId },
+        update: {},
+        create: { id: data.userId, email: `${data.userId}@example.com` }
       });
 
-      // 2. Create the commitment and link the policy
+      if (data.communityId) {
+        await tx.community.upsert({
+          where: { platform_externalId: { platform: 'discord', externalId: data.communityId } },
+          update: {},
+          create: { id: data.communityId, name: 'Test Community', platform: 'discord', externalId: data.communityId }
+        });
+      }
+
+      // 1. Create the commitment and policy in a single nested write
       const commitment = await tx.commitment.create({
         data: {
           userId: data.userId,
           communityId: data.communityId,
           statement: data.statement,
+          normalizedClaim: data.statement, // Defaulting to statement for now
+          sourceChannel: 'api',
+          sourceConversationId: 'webhook',
+          sourceMessageId: 'webhook',
           deadline: new Date(data.deadline),
           status: 'AWAITING_VERIFICATION',
-          verificationPolicyId: policy.id,
           rewardPenaltyPolicy: {
             reward: data.reward || 0,
             penalty: data.penalty || 0,
+          },
+          verificationPolicy: {
+            create: {
+              verifierType: data.verifierType,
+              target: data.target,
+              successCondition: data.successCondition,
+            }
           }
         }
       });
 
-      // 3. Log the creation event
+      // 2. Log the creation event
       await tx.event.create({
         data: {
           commitmentId: commitment.id,

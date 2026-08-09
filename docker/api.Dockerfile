@@ -1,4 +1,5 @@
-FROM node:20-alpine
+FROM node:20-slim
+RUN apt-get update -y && apt-get install -y openssl
 
 # Install pnpm
 RUN corepack enable && corepack prepare pnpm@latest --activate
@@ -12,7 +13,8 @@ COPY services/api ./services/api
 
 # Install dependencies and build
 RUN pnpm install
-RUN pnpm --filter @aether/api build
+RUN pnpm --filter @flowpilot/database generate
+RUN pnpm --filter @aether/api... build
 
 # Set directory to API
 WORKDIR /app/services/api

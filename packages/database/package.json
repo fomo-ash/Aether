@@ -7,7 +7,8 @@
   "scripts": {
     "build": "tsc",
     "dev": "ts-node src/index.ts",
-    "lint": "eslint src/"
+    "lint": "eslint src/",
+    "generate": "prisma generate"
   },
   "dependencies": {
     "@prisma/client": "^5.10.2"

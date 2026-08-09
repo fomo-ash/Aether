@@ -1,4 +1,5 @@
-FROM node:20-alpine
+FROM node:20-slim
+RUN apt-get update -y && apt-get install -y openssl
 
 # Install pnpm
 RUN corepack enable && corepack prepare pnpm@latest --activate
