@@ -1,6 +1,7 @@
 import { Worker } from 'bullmq';
 import Redis from 'ioredis';
 import { processVerificationJob } from './processor';
+import { processMessageJob } from './message.worker';
 
 // Ensure required env vars
 if (!process.env.REDIS_URL) {
@@ -9,24 +10,34 @@ if (!process.env.REDIS_URL) {
 
 const connection = new Redis(process.env.REDIS_URL, { maxRetriesPerRequest: null });
 
-const worker = new Worker('verification-queue', processVerificationJob, {
+// 1. Verification Worker
+const verificationWorker = new Worker('verification-queue', processVerificationJob, {
   connection,
   concurrency: 5
 });
 
-worker.on('completed', (job) => {
-  console.log(`Job ${job.id} completed successfully`);
+verificationWorker.on('completed', (job) => console.log(`[Verification] Job ${job.id} completed successfully`));
+verificationWorker.on('failed', (job, err) => console.error(`[Verification] Job ${job?.id} failed: ${err.message}`));
+
+// 2. Message Extraction Worker
+const messageWorker = new Worker('message-queue', processMessageJob, {
+  connection,
+  concurrency: 10 // Can handle more concurrency as it's just I/O bound LLM calls
 });
 
-worker.on('failed', (job, err) => {
-  console.error(`Job ${job?.id} failed with error: ${err.message}`);
-});
+messageWorker.on('completed', (job) => console.log(`[Message Queue] Job ${job.id} completed successfully`));
+messageWorker.on('failed', (job, err) => console.error(`[Message Queue] Job ${job?.id} failed: ${err.message}`));
 
-console.log('Verification worker started');
+console.log('⚡ Aether Workers Started ⚡');
+console.log('- Verification Queue: Listening');
+console.log('- Message Queue: Listening');
 
 // Graceful shutdown
 process.on('SIGINT', async () => {
-  console.log('Shutting down worker...');
-  await worker.close();
+  console.log('Shutting down workers...');
+  await Promise.all([
+    verificationWorker.close(),
+    messageWorker.close()
+  ]);
   process.exit(0);
 });

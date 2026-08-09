@@ -1,5 +1,5 @@
 {
-  "name": "@aether/shared",
+  "name": "@aether/commitments",
   "version": "1.0.0",
   "private": true,
   "main": "dist/index.js",
@@ -10,6 +10,7 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
+    "@flowpilot/database": "workspace:*",
     "zod": "^3.23.0"
   },
   "devDependencies": {

@@ -1,7 +1,6 @@
 import { Request, Response } from 'express';
-import { CommitmentCreateSchema } from '../schemas/commitment.schema';
-import { CommitmentService } from '../services/commitment.service';
 import { scheduleVerification } from '../queue/producer';
+import { CommitmentCreateSchema, CommitmentService } from '@aether/commitments';
 
 export class CommitmentController {
   static async create(req: Request, res: Response) {

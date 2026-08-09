@@ -39,6 +39,7 @@ services:
       - DATABASE_URL=postgresql://user:password@postgres:5432/aether?schema=public
       - REDIS_URL=redis://redis:6379
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - FEATHERLESS_API_KEY=${FEATHERLESS_API_KEY:-}
     depends_on:
       - postgres
       - redis

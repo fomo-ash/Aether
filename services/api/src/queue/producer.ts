@@ -26,3 +26,33 @@ export async function scheduleVerification(commitmentId: string, deadline: Date)
 
   console.log(`Scheduled verification for commitment ${commitmentId} in ${delay}ms`);
 }
+
+export const messageQueue = new Queue('message-queue', { connection });
+
+export interface MessagePayload {
+  messageId: string;
+  userId: string;
+  communityId: string;
+  channel: string;
+  conversationId: string;
+  message: string;
+}
+
+/**
+ * Enqueues an incoming chat message for asynchronous LLM extraction.
+ */
+export async function enqueueMessage(payload: MessagePayload) {
+  // Namespaced Job ID to prevent duplicate processing on webhook retries
+  const jobId = `message_${payload.channel}_${payload.communityId}_${payload.messageId}`;
+  
+  await messageQueue.add('extract-message', payload, {
+    jobId,
+    attempts: 3,
+    backoff: {
+      type: 'exponential',
+      delay: 2000 // 2s, 4s, 8s
+    }
+  });
+
+  console.log(`Enqueued message ${jobId} for extraction`);
+}

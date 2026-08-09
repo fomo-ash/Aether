@@ -70,9 +70,11 @@ model Community {
   id         String   @id @default(uuid())
   name       String
   platform   String // e.g., "discord", "telegram"
-  externalId String   @map("external_id") // e.g., Discord server ID
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+  externalId           String   @map("external_id") // e.g., Discord server ID
+  defaultRepository    String?  @map("default_repository") // e.g. "owner/aether"
+  githubInstallationId String?  @map("github_installation_id") // Auth for GitHub App
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
 
   members            CommunityMember[]
   reputationAccounts ReputationAccount[]

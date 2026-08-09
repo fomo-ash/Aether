@@ -10,10 +10,13 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@flowpilot/database": "workspace:*",
+    "@aether/commitments": "workspace:*",
+    "@aether/shared": "workspace:*",
     "@aether/verification-registry": "workspace:*",
-    "bullmq": "^4.14.0",
-    "ioredis": "^5.3.0",
+    "@flowpilot/database": "workspace:*",
+    "bullmq": "^5.1.0",
+    "chrono-node": "^2.7.5",
+    "ioredis": "^5.0.0",
     "dotenv": "^16.0.0"
   },
   "devDependencies": {
