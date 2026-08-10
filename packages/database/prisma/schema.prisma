@@ -280,3 +280,4 @@ model Event {
   @@index([betId, createdAt])
   @@map("events")
 }
+

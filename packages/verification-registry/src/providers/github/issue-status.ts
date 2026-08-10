@@ -1,26 +1,8 @@
-import { Octokit } from '@octokit/rest';
 import { Verifier, VerificationPolicyContext, VerificationResult } from '../../types';
+import { GithubAuthFactory } from './auth';
 
 export class GithubIssueStatusVerifier implements Verifier {
   id = 'github.issue_status';
-
-  /**
-   * Instantiates an Octokit client using the production GitHub App installation ID,
-   * with a fallback to the environment token ONLY for local development.
-   */
-  private getOctokit(context: VerificationPolicyContext): Octokit {
-    if (context.githubInstallationId) {
-      console.log(`[Github Auth] Using Installation ID: ${context.githubInstallationId}`);
-      throw new Error('GitHub App Installation exchange not yet implemented');
-    }
-
-    if (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV) {
-      console.log(`[Github Auth] Falling back to GITHUB_TOKEN environment variable (dev only)`);
-      return new Octokit(process.env.GITHUB_TOKEN ? { auth: process.env.GITHUB_TOKEN } : undefined);
-    }
-
-    throw new Error('Production authentication requires a githubInstallationId.');
-  }
 
   async verify(context: VerificationPolicyContext): Promise<VerificationResult> {
     try {
@@ -35,7 +17,7 @@ export class GithubIssueStatusVerifier implements Verifier {
       }
 
       const [, owner, repo, issue_number] = match;
-      const octokit = this.getOctokit(context);
+      const octokit = GithubAuthFactory.getOctokit(context);
 
       const { data } = await octokit.issues.get({
         owner,
