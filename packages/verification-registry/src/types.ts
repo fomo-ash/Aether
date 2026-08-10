@@ -6,6 +6,7 @@ export interface VerificationPolicyContext {
   successCondition: any;
   configuration: any;
   githubInstallationId?: string;
+  createdAt: Date;
 }
 
 export interface VerificationResult {

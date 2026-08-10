@@ -18,9 +18,9 @@ export class CommitmentService {
 
       if (data.communityId) {
         await tx.community.upsert({
-          where: { platform_externalId: { platform: 'discord', externalId: data.communityId } },
+          where: { id: data.communityId },
           update: {},
-          create: { id: data.communityId, name: 'Test Community', platform: 'discord', externalId: data.communityId }
+          create: { id: data.communityId, name: 'Test Community', platform: 'api', externalId: data.communityId }
         });
       }
 
@@ -32,7 +32,7 @@ export class CommitmentService {
           statement: data.statement,
           normalizedClaim: data.statement, // Defaulting to statement for now
           sourceChannel: 'api',
-          sourceConversationId: 'webhook',
+          sourceConversationId: data.conversationId || 'webhook',
           sourceMessageId: 'webhook',
           deadline: new Date(data.deadline),
           status: 'AWAITING_VERIFICATION',

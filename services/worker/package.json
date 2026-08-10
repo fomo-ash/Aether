@@ -15,6 +15,7 @@
     "@aether/verification-registry": "workspace:*",
     "@flowpilot/database": "workspace:*",
     "bullmq": "^5.1.0",
+    "caspian-sdk": "^0.1.2",
     "chrono-node": "^2.7.5",
     "ioredis": "^5.0.0",
     "dotenv": "^16.0.0"

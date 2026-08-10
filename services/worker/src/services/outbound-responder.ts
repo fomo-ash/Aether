@@ -1,7 +1,18 @@
 import Redis from 'ioredis';
+import { CommClient } from 'caspian-sdk';
 
 const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
 const redis = new Redis(redisUrl);
+
+let caspianClient: CommClient | null = null;
+try {
+  caspianClient = new CommClient({
+    apiKey: process.env.CASPIAN_API_KEY,
+    baseUrl: process.env.CASPIAN_BASE_URL || 'https://api.trycaspianai.com'
+  });
+} catch (e) {
+  console.warn("[OutboundResponder] Caspian CommClient failed to initialize. Outbound messages will fallback to console.");
+}
 
 export interface ClarificationState {
   originalMessage: string;
@@ -25,12 +36,19 @@ export class OutboundResponder {
     // Store transient state for 1 hour
     await redis.set(key, JSON.stringify(state), 'EX', 3600);
     
-    // In a real integration, this would call the Caspian/Discord API
-    console.log(`\n========================================`);
-    console.log(`[OUTBOUND MESSAGE -> Caspian]`);
-    console.log(`To: User ${userId} in ${conversationId}`);
-    console.log(`Bot: "${question}"`);
-    console.log(`========================================\n`);
+    if (caspianClient) {
+      try {
+        await caspianClient.sendMessage(conversationId, question);
+      } catch (e: any) {
+        console.error(`[OutboundResponder] Failed to send clarification via Caspian: ${e.message}`);
+      }
+    } else {
+      console.log(`\n========================================`);
+      console.log(`[OUTBOUND MESSAGE -> Caspian (MOCK)]`);
+      console.log(`To: User ${userId} in ${conversationId}`);
+      console.log(`Bot: "${question}"`);
+      console.log(`========================================\n`);
+    }
   }
 
   /**
@@ -59,10 +77,18 @@ export class OutboundResponder {
    * Sends a final success/failure message.
    */
   static async sendMessage(communityId: string, userId: string, conversationId: string, text: string) {
-    console.log(`\n========================================`);
-    console.log(`[OUTBOUND MESSAGE -> Caspian]`);
-    console.log(`To: User ${userId} in ${conversationId}`);
-    console.log(`Bot: "${text}"`);
-    console.log(`========================================\n`);
+    if (caspianClient) {
+      try {
+        await caspianClient.sendMessage(conversationId, text);
+      } catch (e: any) {
+        console.error(`[OutboundResponder] Failed to send message via Caspian: ${e.message}`);
+      }
+    } else {
+      console.log(`\n========================================`);
+      console.log(`[OUTBOUND MESSAGE -> Caspian (MOCK)]`);
+      console.log(`To: User ${userId} in ${conversationId}`);
+      console.log(`Bot: "${text}"`);
+      console.log(`========================================\n`);
+    }
   }
 }

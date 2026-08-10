@@ -215,6 +215,31 @@ importers:
         specifier: ^5.0.0
         version: 5.9.3
 
+  services/caspian:
+    dependencies:
+      '@aether/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+      '@flowpilot/database':
+        specifier: workspace:*
+        version: link:../../packages/database
+      caspian-sdk:
+        specifier: ^0.1.2
+        version: 0.1.2
+      dotenv:
+        specifier: ^16.4.7
+        version: 16.6.1
+    devDependencies:
+      '@types/node':
+        specifier: ^20.19.43
+        version: 20.19.43
+      ts-node-dev:
+        specifier: ^2.0.0
+        version: 2.0.0(@types/node@20.19.43)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   services/channel: {}
 
   services/notification: {}
@@ -240,6 +265,9 @@ importers:
       bullmq:
         specifier: ^5.1.0
         version: 5.81.3
+      caspian-sdk:
+        specifier: ^0.1.2
+        version: 0.1.2
       chrono-node:
         specifier: ^2.7.5
         version: 2.10.1
@@ -1158,6 +1186,11 @@ packages:
 
   /caniuse-lite@1.0.30001806:
     resolution: {integrity: sha512-72Cuvd95zbSYPKq6Fhg8eDJRlzgWDf7/mtoZv6Qe/DYNCEBdNxoA3+rZAU2ZhGCpZlns3EssFavaZomckT5Uuw==}
+    dev: false
+
+  /caspian-sdk@0.1.2:
+    resolution: {integrity: sha512-JCTkIqQ5edBkgJ5j685tvSnbgXEQGI8iWox2BVGRyjIw09CepjD3ZblIRv5L4lEDECruhFcrNdPIUA4wLKFR/A==}
+    engines: {node: '>=18'}
     dev: false
 
   /chalk@4.1.2:

@@ -31,6 +31,9 @@ export async function processMessageJob(job: Job<MessagePayload>) {
     if (pendingState) {
       console.log(`[Message Worker] Resuming pending interaction...`);
       finalMessage = `Context: ${pendingState.originalMessage}\nUser Clarification: ${message}`;
+    } else if (!message.startsWith('/aether commit')) {
+      console.log(`[Message Worker] Message is not a command and there's no pending state. Ignoring.`);
+      return { status: 'ignored' };
     }
 
     // ---------------------------------------------------------
@@ -77,7 +80,8 @@ export async function processMessageJob(job: Job<MessagePayload>) {
       deadline: resolvedContext.resolvedDeadline!.toISOString(),
       verifierType: resolvedContext.proposedVerifier,
       target: resolvedContext.resolvedTarget!,
-      successCondition: 'closed' // Simplified for MVP
+      successCondition: { operator: 'equals', expected: 'closed' }, // Simplified for MVP
+      conversationId: conversationId
     });
 
     // ---------------------------------------------------------

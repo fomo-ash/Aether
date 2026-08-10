@@ -32,13 +32,22 @@ export class GithubIssueStatusVerifier implements Verifier {
         number: data.number,
         state: data.state,
         title: data.title,
-        locked: data.locked
+        locked: data.locked,
+        closed_at: data.closed_at
       };
 
       // Simple success condition evaluation: e.g. { "operator": "equals", "expected": "closed" }
       let isSuccess = false;
       if (context.successCondition?.operator === 'equals') {
         isSuccess = data.state === context.successCondition.expected;
+      }
+
+      // STRICT TIMELINE CHECK: You cannot claim credit for an issue closed before the commitment was created
+      if (isSuccess && data.state === 'closed' && data.closed_at) {
+        const closedAt = new Date(data.closed_at);
+        if (closedAt <= context.createdAt) {
+          isSuccess = false; // Invalid: closed prior to commitment
+        }
       }
 
       return {

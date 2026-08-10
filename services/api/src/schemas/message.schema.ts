@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 export const ParseMessageSchema = z.object({
+  platform: z.string(),
   messageId: z.string(),
   userId: z.string(),
   communityId: z.string(),

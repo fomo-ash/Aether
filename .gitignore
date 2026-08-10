@@ -7,3 +7,4 @@ public/
 docs/
 community/
 services/worker/scripts
+services/caspian/src/test-caspian.ts

@@ -53,7 +53,7 @@ enum BetStatus {
 /// Represents a human or system actor interacting with Aether.
 model User {
   id         String   @id @default(uuid())
-  email      String   @unique
+  email      String?  @unique
   apiKeyHash String?  @unique @map("api_key_hash")
   createdAt  DateTime @default(now()) @map("created_at")
 
@@ -61,8 +61,21 @@ model User {
   reputationAccounts ReputationAccount[]
   betParticipants    BetParticipant[]
   communityMembers   CommunityMember[]
+  identities         UserIdentity[]
 
   @@map("users")
+}
+
+model UserIdentity {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  platform   String
+  externalId String   @map("external_id")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([platform, externalId])
+  @@map("user_identities")
 }
 
 /// Represents a Discord server, Telegram group, Slack workspace, etc.

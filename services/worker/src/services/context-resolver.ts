@@ -21,10 +21,10 @@ export class ContextResolver {
     extractedTarget: string | undefined,
     extractedDeadline: string | undefined
   ): Promise<ResolvedContext> {
-    
+
     // Default to github.issue_status if none proposed
     const verifier = extractedVerifier || 'github.issue_status';
-    
+
     const missing: string[] = [];
     let resolvedTarget: string | undefined = undefined;
     let resolvedDeadline: Date | undefined = undefined;
@@ -48,7 +48,7 @@ export class ContextResolver {
       } else {
         // Fetch Community context
         const community = await prisma.community.findFirst({
-          where: { platform: 'discord', externalId: communityId }
+          where: { id: communityId }
         });
 
         // E.g., target is "issue #142" -> extract "142"

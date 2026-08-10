@@ -32,7 +32,8 @@ export async function processVerificationJob(job: any) {
     target: policy.target,
     successCondition: policy.successCondition as any,
     configuration: policy.configuration as any,
-    githubInstallationId: commitment.community?.githubInstallationId || undefined
+    githubInstallationId: commitment.community?.githubInstallationId || undefined,
+    createdAt: commitment.createdAt
   };
 
   // 1. External API Call OUTSIDE the transaction

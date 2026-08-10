@@ -1,0 +1,22 @@
+{
+  "name": "@aether/caspian",
+  "version": "1.0.0",
+  "private": true,
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node-dev --respawn src/index.ts"
+  },
+  "dependencies": {
+    "@flowpilot/database": "workspace:*",
+    "@aether/shared": "workspace:*",
+    "caspian-sdk": "^0.1.2",
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "ts-node-dev": "^2.0.0",
+    "@types/node": "^20.19.43"
+  }
+}
