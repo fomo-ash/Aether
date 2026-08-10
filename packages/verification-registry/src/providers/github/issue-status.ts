@@ -47,6 +47,8 @@ export class GithubIssueStatusVerifier implements Verifier {
         const closedAt = new Date(data.closed_at);
         if (closedAt <= context.createdAt) {
           isSuccess = false; // Invalid: closed prior to commitment
+        } else if (context.deadline && closedAt > context.deadline) {
+          isSuccess = false; // Invalid: closed AFTER the deadline
         }
       }
 

@@ -30,8 +30,9 @@ Your JSON output MUST exactly match this structure:
 {
   "intent": "COMMITMENT" | "NOT_COMMITMENT" | "BET" | "AMBIGUOUS",
   "targetReference": "extracted target or null",
-  "deadlineText": "extracted deadline or null",
-  "proposedVerifier": "extracted verifier hint (e.g., github.issue_status) or null"
+  "deadline": "absolute ISO-8601 UTC timestamp (e.g. '2026-08-12T18:00:00Z') or null. If ambiguous, ask for clarification by returning AMBIGUOUS.",
+  "proposedVerifier": "extracted verifier hint (e.g., github.issue_status) or null",
+  "stake": "integer amount of reputation staked (extract naked numbers from follow-up context if provided), or null if not specified"
 }
 
 Return ONLY valid JSON. Do not include markdown formatting like \`\`\`json.

@@ -1,10 +1,13 @@
 import { CommClient } from 'caspian-sdk';
 import { PrismaClient } from '@flowpilot/database';
+import Redis from 'ioredis';
 import * as dotenv from 'dotenv';
 dotenv.config();
 
 const prisma = new PrismaClient();
 const AETHER_API_URL = process.env.AETHER_API_URL || 'http://api:3250';
+const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+const redis = new Redis(redisUrl);
 
 async function bootstrap() {
   console.log(`[Caspian Ingress] Starting adapter...`);
@@ -21,6 +24,7 @@ async function bootstrap() {
 
   client.onMessage(async (message: any) => {
     try {
+      const receivedAt = Date.now();
       if (!message.text) {
         return;
       }
@@ -37,26 +41,21 @@ async function bootstrap() {
       }
 
       // 2. Resolve Community
-      let community = await prisma.community.findUnique({
+      const community = await prisma.community.upsert({
         where: {
           platform_externalId: {
             platform,
             externalId: externalCommunityId
           }
+        },
+        update: {},
+        create: {
+          name: `Caspian ${platform} Community`,
+          platform,
+          externalId: externalCommunityId,
+          githubInstallationId: null // explicitly null until configured
         }
       });
-
-      if (!community) {
-        console.log(`[Caspian Ingress] New community observed (${platform}/${externalCommunityId}). Provisioning Aether Community...`);
-        community = await prisma.community.create({
-          data: {
-            name: `Caspian ${platform} Community`,
-            platform,
-            externalId: externalCommunityId,
-            githubInstallationId: null // explicitly null until configured
-          }
-        });
-      }
 
       // 3. Resolve User Identity
       let identity = await prisma.userIdentity.findUnique({
@@ -69,23 +68,43 @@ async function bootstrap() {
         include: { user: true }
       });
 
-      let userId = identity?.userId;
-
       if (!identity) {
         console.log(`[Caspian Ingress] New identity observed (${platform}/${externalUserId}). Provisioning Aether User...`);
-        const user = await prisma.user.create({
-          data: { email: null } // Optional email per updated schema
-        });
+        try {
+          const user = await prisma.user.create({
+            data: { email: null }
+          });
+          identity = await prisma.userIdentity.create({
+            data: {
+              userId: user.id,
+              platform,
+              externalId: externalUserId
+            },
+            include: { user: true }
+          });
+        } catch (e: any) {
+          if (e.code === 'P2002') {
+             // Handled concurrent creation
+             identity = await prisma.userIdentity.findUniqueOrThrow({
+                where: { platform_externalId: { platform, externalId: externalUserId } },
+                include: { user: true }
+             });
+          } else {
+             throw e;
+          }
+        }
+      }
 
-        identity = await prisma.userIdentity.create({
-          data: {
-            userId: user.id,
-            platform,
-            externalId: externalUserId
-          },
-          include: { user: true }
-        });
-        userId = user.id;
+      const userId = identity.userId;
+
+      // Message Filtering
+      const isCommand = message.text.startsWith('/aether commit');
+      const pendingKey = `clarify:${community.id}:${userId}:${message.conversationId}`;
+      const hasPending = await redis.exists(pendingKey);
+      
+      if (!isCommand && !hasPending) {
+         console.log(`[Caspian Ingress] Message ignored (Not a command and no pending interaction).`);
+         return;
       }
 
       // 4. Normalize and send to Aether API
@@ -96,7 +115,10 @@ async function bootstrap() {
         communityId: community.id,
         channel: platform,
         conversationId: message.conversationId,
-        message: message.text
+        message: message.text,
+        telemetry: {
+          receivedAt
+        }
       };
 
       console.log(`[Caspian Ingress] Forwarding normalized event to Aether API...`);

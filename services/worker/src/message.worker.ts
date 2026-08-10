@@ -11,13 +11,15 @@ export interface MessagePayload {
   channel: string;
   conversationId: string;
   message: string;
+  telemetry?: any;
 }
 
 export async function processMessageJob(job: Job<MessagePayload>) {
   console.log(`\n========================================`);
   console.log(`[Message Worker] Picked up job: ${job.id}`);
   
-  const { message, userId, communityId, channel, conversationId } = job.data;
+  const { message, userId, communityId, channel, conversationId, telemetry } = job.data;
+  const workerStartedAt = Date.now();
   console.log(`[Context] User: ${userId} | Community: ${communityId} | Channel: ${channel} | Conversation: ${conversationId}`);
   console.log(`[Message] "${message}"`);
   
@@ -28,8 +30,11 @@ export async function processMessageJob(job: Job<MessagePayload>) {
     // Check for Pending Clarification State
     // ---------------------------------------------------------
     const pendingState = await OutboundResponder.getPendingState(communityId, userId, conversationId);
+    let cumulativeContext = message;
+    
     if (pendingState) {
       console.log(`[Message Worker] Resuming pending interaction...`);
+      cumulativeContext = `${pendingState.originalMessage}\nUser Clarification: ${message}`;
       finalMessage = `Context: ${pendingState.originalMessage}\nUser Clarification: ${message}`;
     } else if (!message.startsWith('/aether commit')) {
       console.log(`[Message Worker] Message is not a command and there's no pending state. Ignoring.`);
@@ -40,10 +45,13 @@ export async function processMessageJob(job: Job<MessagePayload>) {
     // Step 6 - Call Featherless LLM to extract Intent
     // ---------------------------------------------------------
     console.log(`[Message Worker] Calling Featherless AI...`);
+    const llmStartedAt = Date.now();
     const extraction = await AIService.extractIntent(finalMessage);
+    const llmCompletedAt = Date.now();
     console.log(`[Featherless Output] Intent: ${extraction.intent}`);
     console.log(`[Featherless Output] Target: ${extraction.targetReference}`);
-    console.log(`[Featherless Output] Deadline: ${extraction.deadlineText}`);
+    console.log(`[Featherless Output] Deadline: ${extraction.deadline}`);
+    console.log(`[Featherless Output] Stake: ${extraction.stake}`);
     
     // ---------------------------------------------------------
     // Step 7 - Deterministic Context Resolution
@@ -53,16 +61,21 @@ export async function processMessageJob(job: Job<MessagePayload>) {
       communityId,
       extraction.proposedVerifier,
       extraction.targetReference,
-      extraction.deadlineText
+      extraction.deadline,
+      extraction.stake
     );
 
     if (!resolvedContext.isComplete) {
       console.log(`[Message Worker] Context incomplete. Missing: ${resolvedContext.missingRequirements.join(', ')}`);
       
-      const question = `I need a bit more info: What is the ${resolvedContext.missingRequirements.join(' and ')}?`;
+      let question = `I need a little more information to finalize this commitment! 🤖\n\n`;
+      question += `Please provide the following:\n`;
+      for (const req of resolvedContext.missingRequirements) {
+        question += `- **${req}**\n`;
+      }
       
       await OutboundResponder.askClarification(communityId, userId, conversationId, question, {
-        originalMessage: message,
+        originalMessage: cumulativeContext,
         missingRequirements: resolvedContext.missingRequirements,
         extractionContext: extraction
       });
@@ -73,6 +86,7 @@ export async function processMessageJob(job: Job<MessagePayload>) {
     // Step 8 - Commitment Creation (Domain Logic)
     // ---------------------------------------------------------
     console.log(`[Message Worker] Context is complete! Creating commitment...`);
+    const commitmentCreatedAt = Date.now();
     const commitment = await CommitmentService.createCommitment({
       userId,
       communityId,
@@ -81,7 +95,9 @@ export async function processMessageJob(job: Job<MessagePayload>) {
       verifierType: resolvedContext.proposedVerifier,
       target: resolvedContext.resolvedTarget!,
       successCondition: { operator: 'equals', expected: 'closed' }, // Simplified for MVP
-      conversationId: conversationId
+      conversationId: conversationId,
+      reward: resolvedContext.resolvedStake,
+      penalty: resolvedContext.resolvedStake
     });
 
     // ---------------------------------------------------------
@@ -98,8 +114,24 @@ export async function processMessageJob(job: Job<MessagePayload>) {
     await verificationQueue.add('verify', { commitmentId: commitment.id }, { delay, jobId: `verify-${commitment.id}` });
 
     await OutboundResponder.clearPendingState(communityId, userId, conversationId);
-    await OutboundResponder.sendMessage(communityId, userId, conversationId, `✅ Commitment created. I'll verify ${resolvedContext.resolvedTarget} is closed by ${deadlineDate.toDateString()}.`);
     
+    const replyText = `✅ **Commitment created**\n\n` + 
+      `🎯 **Target**: ${resolvedContext.resolvedTarget}\n` +
+      `⏰ **Deadline**: ${deadlineDate.toUTCString()}\n` +
+      `🔥 **Reputation at stake**: ${resolvedContext.resolvedStake}\n\n` +
+      `🔍 **Verification**: I'll automatically verify the target before the deadline.`;
+      
+    await OutboundResponder.sendMessage(communityId, userId, conversationId, replyText);
+    
+    const outboundCompletedAt = Date.now();
+    
+    // Telemetry Dump
+    console.log(`\n[Telemetry] messageReceivedAt: ${telemetry?.receivedAt}`);
+    console.log(`[Telemetry] workerStartedAt: ${workerStartedAt}`);
+    console.log(`[Telemetry] llmLatencyMs: ${llmCompletedAt - llmStartedAt}`);
+    console.log(`[Telemetry] commitmentCreatedAt: ${commitmentCreatedAt}`);
+    console.log(`[Telemetry] totalPipelineLatencyMs: ${outboundCompletedAt - (telemetry?.receivedAt || workerStartedAt)}`);
+
     console.log(`[Message Worker] Successfully processed job ${job.id} -> Commitment ${commitment.id}`);
     console.log(`========================================\n`);
     

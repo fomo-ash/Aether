@@ -8,6 +8,7 @@ export interface ResolvedContext {
   missingRequirements: string[];
   resolvedTarget?: string;
   resolvedDeadline?: Date;
+  resolvedStake?: number;
   proposedVerifier: string;
 }
 
@@ -17,9 +18,10 @@ export class ContextResolver {
    */
   static async resolve(
     communityId: string,
-    extractedVerifier: string | undefined,
-    extractedTarget: string | undefined,
-    extractedDeadline: string | undefined
+    extractedVerifier: string | null | undefined,
+    extractedTarget: string | null | undefined,
+    extractedDeadline: string | null | undefined,
+    extractedStake: number | null | undefined
   ): Promise<ResolvedContext> {
 
     // Default to github.issue_status if none proposed
@@ -33,12 +35,20 @@ export class ContextResolver {
     if (!extractedDeadline) {
       missing.push('deadline');
     } else {
-      const parsedDate = chrono.parseDate(extractedDeadline);
-      if (!parsedDate) {
-        missing.push('deadline (could not parse date)');
+      const parsedDate = new Date(extractedDeadline);
+      if (isNaN(parsedDate.getTime())) {
+        missing.push('deadline');
       } else {
         resolvedDeadline = parsedDate;
       }
+    }
+
+    // 2. Resolve Stake
+    let resolvedStake: number | undefined = undefined;
+    if (extractedStake === undefined || extractedStake === null || extractedStake < 5 || extractedStake > 20) {
+      missing.push('reputation stake amount (must be an integer between 5 and 20)');
+    } else {
+      resolvedStake = extractedStake;
     }
 
     // 2. Resolve Target (Repository/Issue) based on Verifier Requirements
@@ -80,6 +90,7 @@ export class ContextResolver {
       missingRequirements: missing,
       resolvedTarget,
       resolvedDeadline,
+      resolvedStake,
       proposedVerifier: verifier
     };
   }

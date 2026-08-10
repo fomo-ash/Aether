@@ -33,7 +33,8 @@ export async function processVerificationJob(job: any) {
     successCondition: policy.successCondition as any,
     configuration: policy.configuration as any,
     githubInstallationId: commitment.community?.githubInstallationId || undefined,
-    createdAt: commitment.createdAt
+    createdAt: commitment.createdAt,
+    deadline: commitment.deadline || undefined
   };
 
   // 1. External API Call OUTSIDE the transaction
@@ -168,15 +169,27 @@ export async function processVerificationJob(job: any) {
   // 3. Outbound Notification (OUTSIDE transaction)
   if (finalStatus === 'VERIFIED_FULFILLED' || finalStatus === 'VERIFIED_MISSED') {
     try {
-      const emoji = finalStatus === 'VERIFIED_FULFILLED' ? '✅' : '❌';
-      const textResult = finalStatus === 'VERIFIED_FULFILLED' ? 'fulfilled' : 'missed';
-      const message = `${emoji} Commitment ${textResult}!\nTarget: ${policy.target}\nState observed: ${result.observedState}`;
+      const rewardPolicy = commitment.rewardPenaltyPolicy as any;
+      const amount = rewardPolicy?.reward || rewardPolicy?.penalty || 0;
+      let replyText = '';
+      if (finalStatus === 'VERIFIED_FULFILLED') {
+        replyText = `🎉 **Commitment fulfilled!**\n\n` +
+          `🎯 **${policy.target}**\n` +
+          `✅ Completed before the deadline\n\n` +
+          `**Reputation**: +${amount}`;
+      } else {
+        replyText = `❌ **Commitment missed**\n\n` +
+          `🎯 **${policy.target}**\n` +
+          `⏰ **Deadline**: ${commitment.deadline?.toUTCString() || 'Unknown'}\n\n` +
+          `📌 **State at deadline**: ${result.observedState}\n` +
+          `**Reputation**: -${amount}`;
+      }
       
       await OutboundResponder.sendMessage(
         commitment.communityId || '',
         commitment.userId,
         commitment.sourceConversationId,
-        message
+        replyText
       );
       console.log(`[Verification] Outbound notification sent for ${commitmentId}`);
     } catch (notifErr) {

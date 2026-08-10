@@ -7,7 +7,8 @@ export const ParseMessageSchema = z.object({
   communityId: z.string(),
   channel: z.string(),
   conversationId: z.string(),
-  message: z.string().min(1)
+  message: z.string().min(1),
+  telemetry: z.any().optional()
 });
 
 export type ParseMessageData = z.infer<typeof ParseMessageSchema>;
