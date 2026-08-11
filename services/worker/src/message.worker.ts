@@ -3,6 +3,7 @@ import { AIService } from './services/ai.service';
 import { ContextResolver } from './services/context-resolver';
 import { OutboundResponder } from './services/outbound-responder';
 import { CommitmentService } from '@aether/commitments';
+import { GithubResolver, InaccessibleRepositoryError } from './services/github-resolver';
 
 export interface MessagePayload {
   messageId: string;
@@ -14,10 +15,49 @@ export interface MessagePayload {
   telemetry?: any;
 }
 
-export async function processMessageJob(job: Job<MessagePayload>) {
+export async function processMessageJob(job: Job<any>) {
   console.log(`\n========================================`);
-  console.log(`[Message Worker] Picked up job: ${job.id}`);
+  console.log(`[Message Worker] Picked up job: ${job.id} (name: ${job.name})`);
   
+  if (job.name === 'resume-commitment') {
+    const { stateKey, communityId, userId } = job.data;
+    console.log(`[Message Worker] Resuming commitment for stateKey: ${stateKey}`);
+    
+    // Extract conversationId from stateKey format: clarify:communityId:userId:conversationId
+    const parts = stateKey.split(':');
+    if (parts.length < 4) {
+      console.error(`[Message Worker] Invalid stateKey format: ${stateKey}`);
+      return { status: 'failed', reason: 'invalid_state_key' };
+    }
+    const conversationId = parts[3];
+
+    // Read the pending state manually from Redis
+    const Redis = require('ioredis');
+    const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', { maxRetriesPerRequest: null });
+    
+    const stateData = await redis.get(stateKey);
+    if (!stateData) {
+      console.error(`[Message Worker] Pending state expired or missing for key: ${stateKey}`);
+      return { status: 'failed', reason: 'state_expired' };
+    }
+
+    const state = JSON.parse(stateData);
+    
+    // Inject the job data to look like a normal message, but bypass LLM extraction
+    // Wait, the easiest way is to just let it run through LLM again, or we can bypass it.
+    // If we bypass LLM, we need to pass the extractionContext directly.
+    // To keep it simple, we just synthesize a job with the originalMessage as the message!
+    job.data = {
+      messageId: `resume-${Date.now()}`,
+      userId,
+      communityId,
+      channel: 'resume',
+      conversationId,
+      message: state.originalMessage
+    };
+    console.log(`[Message Worker] Resuming with message payload: "${state.originalMessage}"`);
+  }
+
   const { message, userId, communityId, channel, conversationId, telemetry } = job.data;
   const workerStartedAt = Date.now();
   console.log(`[Context] User: ${userId} | Community: ${communityId} | Channel: ${channel} | Conversation: ${conversationId}`);
@@ -80,6 +120,36 @@ export async function processMessageJob(job: Job<MessagePayload>) {
         extractionContext: extraction
       });
       return { status: 'clarification_requested' };
+    }
+
+    // ---------------------------------------------------------
+    // Step 7.5 - Resolve GitHub Installation (Phase 6B)
+    // ---------------------------------------------------------
+    if (resolvedContext.proposedVerifier.startsWith('github.')) {
+      const targetRepo = resolvedContext.resolvedTarget!.split('#')[0];
+      console.log(`[Message Worker] Resolving GitHub Installation for ${targetRepo}...`);
+      try {
+        await GithubResolver.resolveInstallation(userId, targetRepo, communityId);
+      } catch (error: any) {
+        if (error instanceof InaccessibleRepositoryError) {
+          console.log(`[Message Worker] Repository inaccessible. Triggering OAuth flow...`);
+          const stateKey = await OutboundResponder.savePendingState(communityId, userId, conversationId, {
+            originalMessage: cumulativeContext,
+            missingRequirements: [], // Context is complete, just waiting for auth
+            extractionContext: extraction
+          });
+
+          await OutboundResponder.askGithubConnect(
+            communityId,
+            userId,
+            conversationId,
+            targetRepo,
+            stateKey
+          );
+          return { status: 'auth_requested' };
+        }
+        throw error; // Re-throw other errors
+      }
     }
 
     // ---------------------------------------------------------

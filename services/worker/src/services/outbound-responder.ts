@@ -74,6 +74,39 @@ export class OutboundResponder {
   }
 
   /**
+   * Explicitly saves the pending state (e.g. for resuming after GitHub OAuth)
+   * Returns the Redis key used, so it can be passed to the OAuth flow.
+   */
+  static async savePendingState(
+    communityId: string, 
+    userId: string, 
+    conversationId: string, 
+    state: ClarificationState
+  ): Promise<string> {
+    const key = `clarify:${communityId}:${userId}:${conversationId}`;
+    await redis.set(key, JSON.stringify(state), 'EX', 3600);
+    return key;
+  }
+
+  /**
+   * Sends a message asking the user to connect their GitHub account.
+   */
+  static async askGithubConnect(
+    communityId: string,
+    userId: string,
+    conversationId: string,
+    targetRepo: string,
+    stateKey: string
+  ) {
+    const baseUrl = process.env.AETHER_API_URL || 'http://localhost:3250';
+    const connectUrl = `${baseUrl}/api/github/connect?userId=${userId}&communityId=${communityId}&targetRepo=${encodeURIComponent(targetRepo)}&stateKey=${encodeURIComponent(stateKey)}`;
+    
+    const text = `🔒 I don't have access to **${targetRepo}**!\n\nPlease link your GitHub account by clicking here:\n[Connect GitHub](${connectUrl})\n\nOnce linked, I'll automatically resume creating your commitment!`;
+    
+    await this.sendMessage(communityId, userId, conversationId, text);
+  }
+
+  /**
    * Sends a final success/failure message.
    */
   static async sendMessage(communityId: string, userId: string, conversationId: string, text: string) {

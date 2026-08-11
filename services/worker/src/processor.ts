@@ -1,6 +1,7 @@
 import { PrismaClient } from '@flowpilot/database';
 import { getVerifier, VerificationPolicyContext } from '@aether/verification-registry';
 import { OutboundResponder } from './services/outbound-responder';
+import { GithubResolver, InaccessibleRepositoryError } from './services/github-resolver';
 import * as crypto from 'crypto';
 
 const prisma = new PrismaClient();
@@ -27,12 +28,30 @@ export async function processVerificationJob(job: any) {
   const policy = commitment.verificationPolicy;
   const verifier = getVerifier(policy.verifierType);
 
+  let githubInstallationId: string | undefined = undefined;
+  if (verifier.id.startsWith('github.')) {
+    try {
+      githubInstallationId = await GithubResolver.resolveInstallation(
+        commitment.userId,
+        policy.target,
+        commitment.communityId
+      );
+    } catch (e: any) {
+      if (e instanceof InaccessibleRepositoryError) {
+        console.warn(`[Verification] ${e.message}`);
+        // We will pass undefined and let the verifier fail safely (will become UNRESOLVED)
+      } else {
+        throw e;
+      }
+    }
+  }
+
   const context: VerificationPolicyContext = {
     commitmentId: commitment.id,
     target: policy.target,
     successCondition: policy.successCondition as any,
     configuration: policy.configuration as any,
-    githubInstallationId: commitment.community?.githubInstallationId || undefined,
+    githubInstallationId,
     createdAt: commitment.createdAt,
     deadline: commitment.deadline || undefined
   };

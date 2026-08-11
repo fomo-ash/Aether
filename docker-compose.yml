@@ -27,6 +27,11 @@ services:
       - DATABASE_URL=postgresql://user:password@postgres:5432/aether?schema=public
       - REDIS_URL=redis://redis:6379
       - PORT=3250
+      - GITHUB_APP_ID=${GITHUB_APP_ID:-}
+      - GITHUB_PRIVATE_KEY=${GITHUB_PRIVATE_KEY:-}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-}
+      - GITHUB_APP_SLUG=${GITHUB_APP_SLUG:-aether-agent}
     depends_on:
       - postgres
       - redis
@@ -40,6 +45,9 @@ services:
       - REDIS_URL=redis://redis:6379
       - GITHUB_APP_ID=${GITHUB_APP_ID:-}
       - GITHUB_PRIVATE_KEY=${GITHUB_PRIVATE_KEY:-}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-}
+      - GITHUB_APP_SLUG=${GITHUB_APP_SLUG:-aether-agent}
       - FEATHERLESS_API_KEY=${FEATHERLESS_API_KEY:-}
       - CASPIAN_API_KEY=${CASPIAN_API_KEY:-}
     depends_on:
