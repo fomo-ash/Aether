@@ -2,7 +2,7 @@ const { PrismaClient } = require('@flowpilot/database');
 const prisma = new PrismaClient();
 const crypto = require('crypto');
 
-const API_URL = 'http://api:3250/api/commitments';
+const API_URL = process.env.API_URL || 'http://localhost:3250/api/commitments';
 
 async function wait(ms) {
   return new Promise(r => setTimeout(r, ms));
@@ -93,7 +93,7 @@ async function runTests() {
 
     // TEST 2: Missing installation ID (Testing strict config).
     console.log("Running Test 2: Missing Installation ID...");
-    const { GithubAuthFactory } = require('/app/packages/verification-registry/dist/providers/github/auth.js');
+    const { GithubAuthFactory } = require('../../../packages/verification-registry/dist/providers/github/auth.js');
     try {
       GithubAuthFactory.getOctokit({ githubInstallationId: undefined });
       results.test2_missingInstallId = 'FAIL (Did not throw)';

@@ -52,7 +52,7 @@ export class ContextResolver {
     }
 
     // 2. Resolve Target (Repository/Issue) based on Verifier Requirements
-    if (verifier === 'github.issue_status' || verifier === 'github.pr_merged') {
+    if (verifier === 'github.issue' || verifier === 'github.pr_merged' || verifier === 'github.issue_status') {
       if (!extractedTarget) {
         missing.push('repository or issue/PR number');
       } else {

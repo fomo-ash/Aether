@@ -56,3 +56,17 @@ export async function enqueueMessage(payload: MessagePayload) {
 
   console.log(`Enqueued message ${jobId} for extraction`);
 }
+
+export const webhookQueue = new Queue('webhook-queue', { connection });
+
+export async function enqueueWebhook(payload: any, eventId: string) {
+  await webhookQueue.add('process-webhook', payload, {
+    jobId: `webhook_${eventId}`, // Idempotency key from provider
+    attempts: 5,
+    backoff: {
+      type: 'exponential',
+      delay: 1000 // 1s, 2s, 4s, 8s, 16s
+    }
+  });
+  console.log(`Enqueued webhook event ${eventId} for processing`);
+}

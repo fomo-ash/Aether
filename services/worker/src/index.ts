@@ -1,6 +1,6 @@
 import { Worker } from 'bullmq';
 import Redis from 'ioredis';
-import { processVerificationJob } from './processor';
+import { processVerificationJob, processWebhookJob } from './processor';
 import { processMessageJob } from './message.worker';
 
 // Ensure required env vars
@@ -28,7 +28,16 @@ const messageWorker = new Worker('message-queue', processMessageJob, {
 messageWorker.on('completed', (job) => console.log(`[Message Queue] Job ${job.id} completed successfully`));
 messageWorker.on('failed', (job, err) => console.error(`[Message Queue] Job ${job?.id} failed: ${err.message}`));
 
-// 3. Reconciler Worker
+// 3. Webhook Event Worker
+const webhookWorker = new Worker('webhook-queue', processWebhookJob, {
+  connection,
+  concurrency: 10 // Fast processing
+});
+
+webhookWorker.on('completed', (job) => console.log(`[Webhook Queue] Job ${job.id} completed successfully`));
+webhookWorker.on('failed', (job, err) => console.error(`[Webhook Queue] Job ${job?.id} failed: ${err.message}`));
+
+// 4. Reconciler Worker
 import { Queue } from 'bullmq';
 import { PrismaClient } from '@flowpilot/database';
 const prisma = new PrismaClient();
@@ -73,6 +82,7 @@ reconcilerQueue.add('sweep', {}, {
 console.log('⚡ Aether Workers Started ⚡');
 console.log('- Verification Queue: Listening');
 console.log('- Message Queue: Listening');
+console.log('- Webhook Queue: Listening');
 console.log('- Reconciler Queue: Scheduled (*/5 * * * *)');
 
 // Graceful shutdown
@@ -81,6 +91,7 @@ process.on('SIGINT', async () => {
   await Promise.all([
     verificationWorker.close(),
     messageWorker.close(),
+    webhookWorker.close(),
     reconcilerWorker.close()
   ]);
   process.exit(0);

@@ -32,6 +32,7 @@ services:
       - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
       - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-}
       - GITHUB_APP_SLUG=${GITHUB_APP_SLUG:-aether-agent}
+      - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET:-}
     depends_on:
       - postgres
       - redis
@@ -48,6 +49,7 @@ services:
       - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
       - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-}
       - GITHUB_APP_SLUG=${GITHUB_APP_SLUG:-aether-agent}
+      - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET:-}
       - FEATHERLESS_API_KEY=${FEATHERLESS_API_KEY:-}
       - CASPIAN_API_KEY=${CASPIAN_API_KEY:-}
     depends_on:

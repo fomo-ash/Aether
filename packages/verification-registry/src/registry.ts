@@ -1,21 +1,21 @@
-import { Verifier } from './types';
-import { GithubIssueStatusVerifier } from './providers/github/issue-status';
-import { GithubPrMergedVerifier } from './providers/github/pr-merged';
+import { VerificationProvider } from './types';
+import { GithubProvider } from './providers/github/github.provider';
 
-export const registry = new Map<string, Verifier>();
+export class VerificationRegistry {
+  private static providers: VerificationProvider[] = [];
 
-function register(verifier: Verifier) {
-  registry.set(verifier.id, verifier);
-}
-
-// Register all verifiers
-register(new GithubIssueStatusVerifier());
-register(new GithubPrMergedVerifier());
-
-export function getVerifier(id: string): Verifier {
-  const verifier = registry.get(id);
-  if (!verifier) {
-    throw new Error(`Verifier not found for id: ${id}`);
+  static register(provider: VerificationProvider) {
+    this.providers.push(provider);
   }
-  return verifier;
+
+  static getProvider(verifierType: string): VerificationProvider {
+    const provider = this.providers.find(p => p.canVerify(verifierType));
+    if (!provider) {
+      throw new Error(`No provider found capable of verifying: ${verifierType}`);
+    }
+    return provider;
+  }
 }
+
+// Register default providers
+VerificationRegistry.register(new GithubProvider());

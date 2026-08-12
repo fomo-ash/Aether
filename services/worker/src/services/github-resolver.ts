@@ -30,6 +30,8 @@ export class GithubResolver {
     targetRepo: string, // e.g., "owner/repo"
     communityId?: string | null
   ): Promise<string> {
+    console.log(`[DEBUG] 1. Aether userId: ${userId}, communityId: ${communityId}`);
+    console.log(`[DEBUG] 2. Target repository parsed from commitment (passed to resolver): ${targetRepo}`);
     
     // 1. Fetch Candidate Installations
     const candidates = new Map<string, { installationId: string; type: 'community' | 'user' }>();
@@ -73,6 +75,14 @@ export class GithubResolver {
       return parseInt(a.installationId) - parseInt(b.installationId); // Deterministic fallback
     });
 
+    console.log(`[DEBUG] 3. Every GithubInstallation candidate found:`);
+    for (const link of (communityId ? await prisma.communityGithubInstallation.findMany({ where: { communityId }, include: { installation: true } }) : [])) {
+      console.log(`  - DB Record ID: ${link.installation.id}, installationId: ${link.installation.installationId}, accountLogin: ${link.installation.accountLogin}, accountType: ${link.installation.accountType} (via community)`);
+    }
+    for (const link of await prisma.userGithubInstallation.findMany({ where: { userId }, include: { installation: true } })) {
+      console.log(`  - DB Record ID: ${link.installation.id}, installationId: ${link.installation.installationId}, accountLogin: ${link.installation.accountLogin}, accountType: ${link.installation.accountType} (via user)`);
+    }
+
     if (candidateList.length === 0) {
       // Legacy Fallback Check (Phase 5)
       if (communityId) {
@@ -89,28 +99,39 @@ export class GithubResolver {
     const app = new App({ appId, privateKey });
 
     for (const candidate of candidateList) {
+      console.log(`[DEBUG] 4. Evaluating installation candidate: ${candidate.installationId}`);
       try {
         const octokit = await app.getInstallationOctokit(parseInt(candidate.installationId, 10));
         
         // Paginate to find the repo (MVP: query accessible repos)
         // If the org has 1000s of repos, this could be slow, but GitHub provides a direct repo check API
-        const [owner, repo] = targetRepo.split('/');
+        const [owner, repoWithSuffix] = targetRepo.split('/');
+        const [repo] = repoWithSuffix.split(/[#@]/); // Strip #issue or @commit
         
+        console.log(`[DEBUG] 8. Confirming token generated for installationId: ${candidate.installationId}`);
+        console.log(`[DEBUG] 9. Confirming owner/repo parsed and passed to GitHub API: owner="${owner}", repo="${repo}"`);
+        console.log(`[DEBUG] 5. Exact GitHub API endpoint being called: GET /repos/${owner}/${repo}`);
+
         try {
           // Check if this installation can access this specific repository
           // Using GET /repos/{owner}/{repo} as the installation
-          const { data } = await octokit.request('GET /repos/{owner}/{repo}', {
+          const { data, status } = await octokit.request('GET /repos/{owner}/{repo}', {
             owner,
             repo,
           });
 
-          if (data && data.full_name.toLowerCase() === targetRepo.toLowerCase()) {
-            console.log(`[GithubResolver] Resolved installation ${candidate.installationId} for ${targetRepo}`);
+          console.log(`[DEBUG] 6. HTTP status returned by GitHub: ${status}`);
+
+          if (data && data.full_name.toLowerCase() === `${owner}/${repo}`.toLowerCase()) {
+            console.log(`[DEBUG] 4. Selected installation ${candidate.installationId} because API returned success and repo name matched.`);
             return candidate.installationId;
           }
         } catch (e: any) {
+          console.log(`[DEBUG] 6. HTTP status returned by GitHub: ${e.status}`);
+          console.log(`[DEBUG] 7. GitHub API error response (excluding secrets): ${JSON.stringify({ message: e.message, status: e.status })}`);
           if (e.status === 404 || e.status === 403) {
             // Installation cannot access this specific repository. Continue to next candidate.
+            console.log(`[DEBUG] 4. Candidate ${candidate.installationId} rejected because it cannot access the repository.`);
             continue;
           }
           throw e; // Bubble up 5xx or rate limit errors

@@ -31,7 +31,7 @@ Your JSON output MUST exactly match this structure:
   "intent": "COMMITMENT" | "NOT_COMMITMENT" | "BET" | "AMBIGUOUS",
   "targetReference": "extracted target or null. If resolving a missing issue/PR number from previous context, merge it with the original repository (e.g., 'owner/repo#123')",
   "deadline": "absolute ISO-8601 UTC timestamp (e.g. '2026-08-12T18:00:00Z') or null. If ambiguous, ask for clarification by returning AMBIGUOUS.",
-  "proposedVerifier": "extracted verifier hint (e.g., github.issue_status) or null",
+  "proposedVerifier": "extracted verifier hint (e.g., github.issue) or null",
   "stake": "integer amount of reputation staked (extract naked numbers from follow-up context if provided), or null if not specified"
 }
 

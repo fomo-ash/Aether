@@ -1,9 +1,9 @@
 import { Octokit } from '@octokit/rest';
 import { createAppAuth } from '@octokit/auth-app';
-import { VerificationPolicyContext } from '../../types';
+import { VerificationContext } from '../../types';
 
 export class GithubAuthFactory {
-  static getOctokit(context: VerificationPolicyContext): Octokit {
+  static getOctokit(context: VerificationContext): Octokit {
     const appId = process.env.GITHUB_APP_ID;
     const privateKeyRaw = process.env.GITHUB_PRIVATE_KEY;
 
@@ -15,8 +15,10 @@ export class GithubAuthFactory {
       throw new Error('Configuration error: GITHUB_PRIVATE_KEY is missing.');
     }
 
-    if (!context.githubInstallationId) {
-      throw new Error('Configuration error: VerificationPolicyContext is missing githubInstallationId.');
+    const githubInstallationId = context.config?.githubInstallationId;
+
+    if (!githubInstallationId) {
+      throw new Error('Configuration error: VerificationContext config is missing githubInstallationId.');
     }
 
     // Safely normalize private key newlines and strip surrounding quotes
@@ -27,14 +29,14 @@ export class GithubAuthFactory {
       privateKey = privateKey.slice(1, -1);
     }
 
-    console.log(`[Github Auth] Using App Installation ID: ${context.githubInstallationId}`);
+    console.log(`[Github Auth] Using App Installation ID: ${githubInstallationId}`);
 
     return new Octokit({
       authStrategy: createAppAuth,
       auth: {
         appId,
         privateKey,
-        installationId: context.githubInstallationId,
+        installationId: githubInstallationId,
       },
     });
   }
