@@ -1,5 +1,6 @@
 import { VerificationProvider } from './types';
 import { GithubProvider } from './providers/github/github.provider';
+import { TavilyProvider } from './providers/search/tavily.provider';
 
 export class VerificationRegistry {
   private static providers: VerificationProvider[] = [];
@@ -19,3 +20,4 @@ export class VerificationRegistry {
 
 // Register default providers
 VerificationRegistry.register(new GithubProvider());
+VerificationRegistry.register(new TavilyProvider());

@@ -97,6 +97,112 @@ async function bootstrap() {
 
       const userId = identity.userId;
 
+      // Handle Help Command
+      if (message.text.trim() === '/aether') {
+        console.log(`[Caspian Ingress] Intercepted help command.`);
+        const helpLines = [
+          `🤖 **Aether**`,
+          ``,
+          `**Verification**`,
+          `\`/aether check <claim>\``,
+          `Instantly verify a claim without creating a commitment or risking REP.`,
+          ``,
+          `**Commitments**`,
+          `\`/aether commit <commitment>\``,
+          `Create a commitment and let Aether verify it automatically.`,
+          ``,
+          `**Reputation**`,
+          `\`/aether rep\``,
+          `View your current REP, tier, progress, and recent reputation changes.`,
+          ``,
+          `\`/aether status\``,
+          `View your current Aether/reputation status.`,
+          ``,
+          `**Examples**`,
+          `\`/aether check India won the 2011 Cricket World Cup\``,
+          `\`/aether commit I'll close fomo-ash/Forester#7 by tomorrow\``,
+          `\`/aether rep\``
+        ];
+        try {
+          await client.sendMessage(message.conversationId, helpLines.join('\n'));
+        } catch (err: any) {
+          console.error(`[Caspian Ingress] Error sending help menu: ${err.message}`);
+        }
+        return;
+      }
+
+      // Handle Check Command
+      if (message.text.trim().startsWith('/aether check ')) {
+        const claim = message.text.replace('/aether check ', '').trim();
+        if (!claim) return;
+        
+        console.log(`[Caspian Ingress] Intercepted check command: "${claim}"`);
+        
+        // Send initial checking message
+        try {
+          await client.sendMessage(message.conversationId, `🔬 Gathering and analyzing evidence...`);
+        } catch (err: any) {
+          console.error(`[Caspian Ingress] Error sending checking message: ${err.message}`);
+        }
+        
+        const payload = {
+          userId,
+          communityId: community.id,
+          conversationId: message.conversationId,
+          claim
+        };
+
+        const response = await fetch(`${AETHER_API_URL}/api/check`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+          console.error(`[Caspian Ingress] Aether API check endpoint returned ${response.status}`);
+        }
+        return;
+      }
+
+      // Handle Reputation Command
+      if (message.text.trim() === '/aether rep' || message.text.trim() === '/aether status') {
+        console.log(`[Caspian Ingress] Intercepted reputation command.`);
+        try {
+          const response = await fetch(`${AETHER_API_URL}/api/reputation?userId=${userId}&communityId=${community.id}`);
+          if (response.ok) {
+            const summary = await response.json();
+            
+            const lines = [
+              `📊 **Reputation Summary**`,
+              `**Tier:** ${summary.tier}`,
+              `**Balance:** ${summary.balance} REP`
+            ];
+
+            if (summary.progressToNextTier !== null) {
+              lines.push(`**Progress to ${summary.nextTierName}:** ${summary.progressToNextTier}%`);
+            }
+            
+            lines.push(`**Record:** ${summary.fulfilledCommitments} Fulfilled / ${summary.missedCommitments} Missed`);
+            
+            if (summary.recentTransactions && summary.recentTransactions.length > 0) {
+              lines.push(``);
+              lines.push(`**Recent Changes:**`);
+              summary.recentTransactions.forEach((tx: any) => {
+                const sign = tx.amount >= 0 ? '+' : '';
+                lines.push(`- \`${sign}${tx.amount}\` : ${tx.reason}`);
+              });
+            }
+
+            await client.sendMessage(message.conversationId, lines.join('\n'));
+          } else {
+            console.error(`[Caspian Ingress] Failed to fetch reputation: ${response.status}`);
+          }
+        } catch (err: any) {
+          console.error(`[Caspian Ingress] Error fetching reputation: ${err.message}`);
+        }
+        return;
+      }
+
       // Message Filtering
       const isCommand = message.text.startsWith('/aether commit');
       const pendingKey = `clarify:${community.id}:${userId}:${message.conversationId}`;

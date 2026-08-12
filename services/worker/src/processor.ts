@@ -61,7 +61,12 @@ export async function processVerificationJob(job: any) {
   // Convert partial evidence to array
   const evidences: Partial<EvidenceData>[] = [evidencePartial];
 
-  const resolutionStatus = OutcomeResolver.resolve(policy.successCondition as unknown as VerificationCondition, evidences, commitment.deadline);
+  const resolutionStatus = OutcomeResolver.resolve(
+    policy.successCondition as unknown as VerificationCondition, 
+    evidences, 
+    commitment.deadline,
+    policy.configuration
+  );
   
   if (resolutionStatus === 'PENDING') {
     // If it's a deadline sweep, and it's PENDING, then we just waited and it didn't fulfill.

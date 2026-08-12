@@ -51,38 +51,55 @@ export class ContextResolver {
       resolvedStake = extractedStake;
     }
 
-    // 2. Resolve Target (Repository/Issue) based on Verifier Requirements
-    if (verifier === 'github.issue' || verifier === 'github.pr_merged' || verifier === 'github.issue_status') {
+    // 3. Resolve Target based on Verifier Requirements
+    if (verifier.startsWith('github.')) {
       if (!extractedTarget) {
-        missing.push('repository or issue/PR number');
+        missing.push('repository or target identifier');
       } else {
-        // Fetch Community context
         const community = await prisma.community.findFirst({
           where: { id: communityId }
         });
 
-        // E.g., target is "issue #142" -> extract "142"
-        const numberMatch = extractedTarget.match(/#?(\d+)/);
-        const hasExplicitRepo = extractedTarget.includes('/'); // e.g. "owner/repo#142"
+        // Determine if target contains repo
+        const hasExplicitRepo = extractedTarget.includes('/'); // e.g. "owner/repo#142" or "owner/repo@sha"
+        const repoMatch = extractedTarget.match(/([a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+)/);
+        const repoBase = repoMatch ? repoMatch[1] : community?.defaultRepository;
 
-        if (!numberMatch) {
-          missing.push('issue/PR number');
-        } else if (hasExplicitRepo) {
-          // They explicitly provided "owner/repo#142", use it as is (stripped of words)
-          const repoMatch = extractedTarget.match(/([a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+)/);
-          if (repoMatch) {
-            resolvedTarget = `${repoMatch[1]}#${numberMatch[1]}`;
+        if (verifier === 'github.issue' || verifier === 'github.pull_request') {
+          const numberMatch = extractedTarget.match(/#?(\d+)/);
+          if (!numberMatch) {
+            missing.push('issue/PR number');
+          } else if (repoBase) {
+            resolvedTarget = `${repoBase}#${numberMatch[1]}`;
           } else {
-            missing.push('valid repository format (owner/repo)');
+            missing.push('repository');
           }
-        } else if (community?.defaultRepository) {
-          // Deterministically prepend default repo
-          resolvedTarget = `${community.defaultRepository}#${numberMatch[1]}`;
+        } else if (verifier === 'github.deployment') {
+          const envMatch = extractedTarget.match(/#([a-zA-Z0-9_-]+)/);
+          if (!envMatch) {
+            missing.push('environment (e.g., #production)');
+          } else if (repoBase) {
+            resolvedTarget = `${repoBase}#${envMatch[1]}`;
+          } else {
+            missing.push('repository');
+          }
+        } else if (verifier === 'github.commit_status' || verifier === 'github.check_run') {
+          const shaMatch = extractedTarget.match(/@([a-fA-F0-9]{7,40})/);
+          if (!shaMatch) {
+            missing.push('commit SHA (e.g., @a1b2c3d)');
+          } else if (repoBase) {
+            resolvedTarget = `${repoBase}@${shaMatch[1]}`;
+          } else {
+            missing.push('repository');
+          }
         } else {
-          // We have the number, but no repo, and no default repo
-          missing.push('repository');
+          resolvedTarget = extractedTarget; // Fallback for unknown github verifiers
         }
       }
+    } else if (verifier === 'web.search') {
+      resolvedTarget = extractedTarget || 'web.search';
+    } else {
+      resolvedTarget = extractedTarget || verifier;
     }
 
     return {

@@ -7,6 +7,7 @@ const app = express();
 const port = process.env.PORT || 3250;
 
 import { WebhookController } from './controllers/webhook.controller';
+import { ReputationController } from './controllers/reputation.controller';
 
 app.use(express.json({
   verify: (req: any, res, buf) => {
@@ -21,6 +22,13 @@ app.get('/health', (req, res) => {
 // Existing synchronous route (to be deprecated/moved to testing later)
 app.post('/api/commitments', CommitmentController.create);
 app.post('/api/commitments/:id/verify', CommitmentController.verify);
+
+// Reputation visibility route
+app.get('/api/reputation', ReputationController.getReputation);
+
+// New asynchronous check route (Phase 7)
+import { CheckController } from './controllers/check.controller';
+app.post('/api/check', CheckController.check);
 
 // New asynchronous LLM extraction route (Phase 3)
 app.post('/api/messages/parse', MessageController.parse);

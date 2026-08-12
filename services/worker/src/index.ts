@@ -10,6 +10,9 @@ if (!process.env.REDIS_URL) {
 
 const connection = new Redis(process.env.REDIS_URL, { maxRetriesPerRequest: null });
 
+// Import check worker to start it (side-effect)
+import './check.worker';
+
 // 1. Verification Worker
 const verificationWorker = new Worker('verification-queue', processVerificationJob, {
   connection,
@@ -83,6 +86,7 @@ console.log('⚡ Aether Workers Started ⚡');
 console.log('- Verification Queue: Listening');
 console.log('- Message Queue: Listening');
 console.log('- Webhook Queue: Listening');
+console.log('- Check Queue: Listening');
 console.log('- Reconciler Queue: Scheduled (*/5 * * * *)');
 
 // Graceful shutdown

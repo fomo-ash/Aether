@@ -8,6 +8,9 @@ const connection = new Redis(redisUrl, {
 });
 
 export const verificationQueue = new Queue('verification-queue', { connection });
+export const messageQueue = new Queue('message-queue', { connection });
+export const webhookQueue = new Queue('webhook-queue', { connection });
+export const checkQueue = new Queue('check-queue', { connection });
 
 /**
  * Schedules a verification job to run at a specific deadline.
@@ -26,8 +29,6 @@ export async function scheduleVerification(commitmentId: string, deadline: Date)
 
   console.log(`Scheduled verification for commitment ${commitmentId} in ${delay}ms`);
 }
-
-export const messageQueue = new Queue('message-queue', { connection });
 
 export interface MessagePayload {
   messageId: string;
@@ -57,8 +58,6 @@ export async function enqueueMessage(payload: MessagePayload) {
   console.log(`Enqueued message ${jobId} for extraction`);
 }
 
-export const webhookQueue = new Queue('webhook-queue', { connection });
-
 export async function enqueueWebhook(payload: any, eventId: string) {
   await webhookQueue.add('process-webhook', payload, {
     jobId: `webhook_${eventId}`, // Idempotency key from provider
@@ -69,4 +68,8 @@ export async function enqueueWebhook(payload: any, eventId: string) {
     }
   });
   console.log(`Enqueued webhook event ${eventId} for processing`);
+}
+
+export async function enqueueCheck(data: any, jobId?: string) {
+  return checkQueue.add('check', data, { jobId });
 }

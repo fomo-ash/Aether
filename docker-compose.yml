@@ -52,6 +52,7 @@ services:
       - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET:-}
       - FEATHERLESS_API_KEY=${FEATHERLESS_API_KEY:-}
       - CASPIAN_API_KEY=${CASPIAN_API_KEY:-}
+      - TAVILY_API_KEY=${TAVILY_API_KEY:-}
     depends_on:
       - postgres
       - redis

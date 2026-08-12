@@ -45,6 +45,7 @@ export class CommitmentService {
               verifierType: data.verifierType,
               target: data.target,
               successCondition: data.successCondition,
+              configuration: data.configuration || {}
             }
           }
         }

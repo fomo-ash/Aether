@@ -8,6 +8,7 @@ export const CommitmentCreateSchema = z.object({
   verifierType: z.string(),
   target: z.string(),
   successCondition: z.any(),
+  configuration: z.any().optional(),
   conversationId: z.string().optional(),
   reward: z.number().optional(),
   penalty: z.number().optional()
