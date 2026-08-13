@@ -1,7 +1,8 @@
 import Redis from 'ioredis';
 import { CommClient } from 'caspian-sdk';
 
-const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+if (!process.env.REDIS_URL) throw new Error('REDIS_URL is required for production.');
+const redisUrl = process.env.REDIS_URL;
 const redis = new Redis(redisUrl);
 
 let caspianClient: CommClient | null = null;
@@ -98,7 +99,8 @@ export class OutboundResponder {
     targetRepo: string,
     stateKey: string
   ) {
-    const baseUrl = process.env.AETHER_API_URL || 'http://localhost:3250';
+    if (!process.env.AETHER_API_URL) throw new Error('AETHER_API_URL is required for production.');
+    const baseUrl = process.env.AETHER_API_URL;
     const connectUrl = `${baseUrl}/api/github/connect?userId=${userId}&communityId=${communityId}&targetRepo=${encodeURIComponent(targetRepo)}&stateKey=${encodeURIComponent(stateKey)}`;
     
     const text = `🔒 I don't have access to **${targetRepo}**!\n\nPlease link your GitHub account by clicking here:\n[Connect GitHub](${connectUrl})\n\nOnce linked, I'll automatically resume creating your commitment!`;

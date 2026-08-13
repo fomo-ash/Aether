@@ -1,7 +1,10 @@
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
 
-const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+if (!process.env.REDIS_URL) {
+  throw new Error('REDIS_URL is strictly required for production.');
+}
+const redisUrl = process.env.REDIS_URL;
 
 const connection = new Redis(redisUrl, {
   maxRetriesPerRequest: null,

@@ -89,14 +89,20 @@ console.log('- Webhook Queue: Listening');
 console.log('- Check Queue: Listening');
 console.log('- Reconciler Queue: Scheduled (*/5 * * * *)');
 
+import { checkWorker } from './check.worker';
+
 // Graceful shutdown
-process.on('SIGINT', async () => {
-  console.log('Shutting down workers...');
-  await Promise.all([
-    verificationWorker.close(),
-    messageWorker.close(),
-    webhookWorker.close(),
-    reconcilerWorker.close()
-  ]);
-  process.exit(0);
+['SIGINT', 'SIGTERM'].forEach(sig => {
+  process.on(sig, async () => {
+    console.log(`[Worker] ${sig} received. Shutting down gracefully...`);
+    await Promise.all([
+      verificationWorker.close(),
+      messageWorker.close(),
+      webhookWorker.close(),
+      reconcilerWorker.close(),
+      checkWorker.close()
+    ]);
+    console.log('[Worker] Graceful shutdown complete.');
+    process.exit(0);
+  });
 });

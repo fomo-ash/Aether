@@ -33,7 +33,8 @@ export async function processMessageJob(job: Job<any>) {
 
     // Read the pending state manually from Redis
     const Redis = require('ioredis');
-    const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', { maxRetriesPerRequest: null });
+    if (!process.env.REDIS_URL) throw new Error('REDIS_URL is required for production.');
+    const redis = new Redis(process.env.REDIS_URL, { maxRetriesPerRequest: null });
     
     const stateData = await redis.get(stateKey);
     if (!stateData) {
@@ -176,7 +177,8 @@ export async function processMessageJob(job: Job<any>) {
     console.log(`[Message Worker] Handing off to verification queue...`);
     const { Queue } = require('bullmq');
     const Redis = require('ioredis');
-    const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', { maxRetriesPerRequest: null });
+    if (!process.env.REDIS_URL) throw new Error('REDIS_URL is required for production.');
+    const redis = new Redis(process.env.REDIS_URL, { maxRetriesPerRequest: null });
     const verificationQueue = new Queue('verification-queue', { connection: redis });
     
     const deadlineDate = resolvedContext.resolvedDeadline!;

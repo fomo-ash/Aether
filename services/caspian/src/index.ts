@@ -5,8 +5,11 @@ import * as dotenv from 'dotenv';
 dotenv.config();
 
 const prisma = new PrismaClient();
-const AETHER_API_URL = process.env.AETHER_API_URL || 'http://api:3250';
-const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+if (!process.env.AETHER_API_URL) throw new Error('AETHER_API_URL is required for production.');
+const AETHER_API_URL = process.env.AETHER_API_URL;
+
+if (!process.env.REDIS_URL) throw new Error('REDIS_URL is required for production.');
+const redisUrl = process.env.REDIS_URL;
 const redis = new Redis(redisUrl);
 
 async function bootstrap() {
@@ -250,6 +253,16 @@ async function bootstrap() {
 
   console.log(`[Caspian Ingress] Listening for events...`);
   await client.listen();
+
+  // Graceful shutdown
+  ['SIGINT', 'SIGTERM'].forEach(sig => {
+    process.on(sig, async () => {
+      console.log(`[Caspian Ingress] ${sig} received. Shutting down gracefully...`);
+      // CommClient has no exposed disconnect, shutting down directly
+      console.log('[Caspian Ingress] Graceful shutdown complete.');
+      process.exit(0);
+    });
+  });
 }
 
 bootstrap().catch(console.error);

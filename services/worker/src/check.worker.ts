@@ -4,7 +4,8 @@ import { VerificationRegistry } from '@aether/verification-registry';
 import { EvidenceEvaluator } from './resolvers/evidence.evaluator';
 import { OutboundResponder } from './services/outbound-responder';
 
-const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+if (!process.env.REDIS_URL) throw new Error('REDIS_URL is required for production.');
+const redisUrl = process.env.REDIS_URL;
 const connection = new Redis(redisUrl, { maxRetriesPerRequest: null });
 
 export const checkWorker = new Worker('check-queue', async (job: Job) => {

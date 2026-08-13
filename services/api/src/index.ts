@@ -40,6 +40,14 @@ app.post('/api/webhooks/:provider', WebhookController.handleWebhook);
 app.get('/api/github/connect', GithubController.startOAuthFlow);
 app.get('/api/github/callback', GithubController.oauthCallback);
 
-app.listen(port, () => {
+const server = app.listen(port as number, '0.0.0.0', () => {
   console.log(`Aether API listening on port ${port}`);
+});
+
+process.on('SIGTERM', () => {
+  console.log('SIGTERM signal received: closing HTTP server');
+  server.close(() => {
+    console.log('HTTP server closed');
+    process.exit(0);
+  });
 });
