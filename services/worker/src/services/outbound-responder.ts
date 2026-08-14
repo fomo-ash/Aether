@@ -99,8 +99,8 @@ export class OutboundResponder {
     targetRepo: string,
     stateKey: string
   ) {
-    if (!process.env.AETHER_API_URL) throw new Error('AETHER_API_URL is required for production.');
-    const baseUrl = process.env.AETHER_API_URL;
+    const baseUrl = process.env.AETHER_PUBLIC_URL || process.env.AETHER_API_URL;
+    if (!baseUrl) throw new Error('AETHER_PUBLIC_URL or AETHER_API_URL is required for production.');
     const connectUrl = `${baseUrl}/api/github/connect?userId=${userId}&communityId=${communityId}&targetRepo=${encodeURIComponent(targetRepo)}&stateKey=${encodeURIComponent(stateKey)}`;
     
     const text = `🔒 I don't have access to **${targetRepo}**!\n\nPlease link your GitHub account by clicking here:\n[Connect GitHub](${connectUrl})\n\nOnce linked, I'll automatically resume creating your commitment!`;

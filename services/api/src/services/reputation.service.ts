@@ -6,11 +6,14 @@ export interface ReputationSummary {
   userId: string;
   communityId: string;
   balance: number;
+  lockedBalance: number;
   tier: string;
   progressToNextTier: number | null; // percentage 0-100
   nextTierName: string | null;
   fulfilledCommitments: number;
   missedCommitments: number;
+  activeBets: number;
+  bootstrapBetsUsed: number;
   recentTransactions: Array<{ amount: number; reason: string; createdAt: Date; type: TransactionType }>;
 }
 
@@ -34,7 +37,10 @@ export class ReputationService {
       where: { userId_communityId: { userId, communityId } }
     });
 
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+
     const balance = account?.balance || 0;
+    const lockedBalance = account?.lockedBalance || 0;
     const tierInfo = ReputationService.getTier(balance);
 
     const progress = tierInfo.nextThreshold ? (balance - tierInfo.threshold) / (tierInfo.nextThreshold - tierInfo.threshold) * 100 : null;
@@ -53,6 +59,10 @@ export class ReputationService {
       if (c.status === 'VERIFIED_MISSED') missedCount = c._count.status;
     }
 
+    const activeBets = await prisma.bet.count({
+      where: { creatorId: userId, communityId, status: { in: ['ACTIVE', 'AWAITING_VERIFICATION'] } }
+    });
+
     // Fetch recent transactions
     let recentTx: Array<{ amount: number; reason: string; createdAt: Date; transactionType: TransactionType }> = [];
     if (account) {
@@ -68,11 +78,14 @@ export class ReputationService {
       userId,
       communityId,
       balance,
+      lockedBalance,
       tier: tierInfo.name,
       progressToNextTier: progress ? Math.round(progress) : null,
       nextTierName: tierInfo.nextName,
       fulfilledCommitments: fulfilledCount,
       missedCommitments: missedCount,
+      activeBets,
+      bootstrapBetsUsed: user?.bootstrapBetsUsed || 0,
       recentTransactions: recentTx.map(tx => ({
         amount: tx.amount,
         reason: tx.reason,

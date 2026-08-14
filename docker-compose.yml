@@ -44,6 +44,8 @@ services:
     environment:
       - DATABASE_URL=postgresql://user:password@postgres:5432/aether?schema=public
       - REDIS_URL=redis://redis:6379
+      - AETHER_API_URL=http://api:3250
+      - AETHER_PUBLIC_URL=http://localhost:3250
       - GITHUB_APP_ID=${GITHUB_APP_ID:-}
       - GITHUB_PRIVATE_KEY=${GITHUB_PRIVATE_KEY:-}
       - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}

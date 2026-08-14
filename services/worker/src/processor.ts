@@ -1,8 +1,10 @@
 import { PrismaClient } from '@flowpilot/database';
 import { VerificationRegistry, VerificationContext, NormalizedWebhookEvent, EvidenceData, VerificationCondition } from '@aether/verification-registry';
+import { EvidenceEvaluator } from './resolvers/evidence.evaluator';
 import { OutboundResponder } from './services/outbound-responder';
 import { GithubResolver, InaccessibleRepositoryError } from './services/github-resolver';
 import { OutcomeResolver } from './resolvers/outcome.resolver';
+import { BetSettlementService } from './services/bet-settlement.service';
 import * as crypto from 'crypto';
 
 const prisma = new PrismaClient();
@@ -61,12 +63,35 @@ export async function processVerificationJob(job: any) {
   // Convert partial evidence to array
   const evidences: Partial<EvidenceData>[] = [evidencePartial];
 
-  const resolutionStatus = OutcomeResolver.resolve(
-    policy.successCondition as unknown as VerificationCondition, 
-    evidences, 
-    commitment.deadline,
-    policy.configuration
-  );
+  let resolutionStatus: any;
+
+  if (policy.verifierType === 'web.search') {
+    console.log(`[Verification Sweep] AI evaluating web search evidence for "${commitment.statement}"...`);
+    const aiOutcome = await EvidenceEvaluator.evaluateWebSearch(commitment.statement, evidences, policy.configuration);
+    if (aiOutcome === 'VERIFIED') {
+      resolutionStatus = 'FULFILLED';
+    } else if (aiOutcome === 'NOT_VERIFIED') {
+      resolutionStatus = 'MISSED';
+    } else {
+      // INSUFFICIENT_EVIDENCE -> check if deadline passed
+      resolutionStatus = OutcomeResolver.resolve(
+        { operator: 'equals', expected: 'found_results' } as any, // bypass condition Met if needed, or just let OutcomeResolver return MISSED if deadline passed
+        evidences, 
+        commitment.deadline,
+        policy.configuration
+      );
+      if (resolutionStatus === 'UNRESOLVED' && commitment.deadline && new Date() > commitment.deadline) {
+        resolutionStatus = 'MISSED';
+      }
+    }
+  } else {
+    resolutionStatus = OutcomeResolver.resolve(
+      policy.successCondition as unknown as VerificationCondition, 
+      evidences, 
+      commitment.deadline,
+      policy.configuration
+    );
+  }
   
   if (resolutionStatus === 'PENDING') {
     // If it's a deadline sweep, and it's PENDING, then we just waited and it didn't fulfill.
@@ -91,7 +116,10 @@ export async function processWebhookJob(job: any) {
     where: {
       status: 'AWAITING_VERIFICATION',
       verificationPolicy: {
-        target: event.target,
+        target: {
+          equals: event.target,
+          mode: 'insensitive'
+        }
         // Optional: filter by verifierType = event.provider.*
       }
     },
@@ -137,14 +165,60 @@ export async function processWebhookJob(job: any) {
 }
 
 async function applyResolution(commitment: any, status: string, evidencePartial: Partial<EvidenceData>, providerName: string) {
-  const finalStatus = status === 'FULFILLED' ? 'VERIFIED_FULFILLED' : 'VERIFIED_MISSED';
+  const finalStatus = status === 'FULFILLED' ? 'VERIFIED_FULFILLED' : (status === 'EXPIRED' ? 'EXPIRED' : 'VERIFIED_MISSED');
 
   try {
-    await prisma.$transaction(async (tx: any) => {
-      const updateResult = await tx.commitment.updateMany({
-        where: { id: commitment.id, status: 'AWAITING_VERIFICATION' },
-        data: { status: finalStatus }
+    const bet = await prisma.bet.findUnique({ where: { commitmentId: commitment.id } });
+    
+    // If it's part of a bet, delegate to BetSettlementService instead of Legacy flow
+    if (bet) {
+      await prisma.$transaction(async (tx: any) => {
+        const updateResult = await tx.commitment.updateMany({
+          where: { id: commitment.id, status: 'AWAITING_VERIFICATION' },
+          data: { status: finalStatus }
+        });
+        if (updateResult.count === 0) throw new Error('CONCURRENCY_LOCKED');
+
+        const evidence = await tx.evidence.create({
+          data: {
+            commitmentId: commitment.id,
+            betId: bet.id,
+            source: providerName,
+            observedState: evidencePartial.observedState || 'UNKNOWN',
+            payload: evidencePartial.payload || {},
+            metadata: evidencePartial.metadata || {}
+          }
+        });
+
+        const resolution = await tx.resolution.create({
+          data: {
+            commitmentId: commitment.id,
+            betId: bet.id,
+            status: status as any,
+            result: status,
+            explanation: `Verified via ${providerName}. State: ${evidencePartial.observedState}`,
+            evidenceRefs: [evidence.id]
+          }
+        });
+        
+        await tx.event.create({
+          data: {
+            commitmentId: commitment.id,
+            betId: bet.id,
+            eventType: `COMMITMENT_${status}`,
+            payload: { evidenceId: evidence.id, resolutionId: resolution.id }
+          }
+        });
       });
+
+      // Call BetSettlementService to execute atomic Escrow transfers
+      await BetSettlementService.settle(bet.id, status as 'FULFILLED' | 'MISSED' | 'EXPIRED');
+    } else {
+      await prisma.$transaction(async (tx: any) => {
+        const updateResult = await tx.commitment.updateMany({
+          where: { id: commitment.id, status: 'AWAITING_VERIFICATION' },
+          data: { status: finalStatus }
+        });
 
       if (updateResult.count === 0) throw new Error('CONCURRENCY_LOCKED');
 
@@ -221,6 +295,7 @@ async function applyResolution(commitment: any, status: string, evidencePartial:
         }
       }
     });
+    }
   } catch (err: any) {
     if (err.message === 'CONCURRENCY_LOCKED') return;
     if (err.code === 'P2002' && err.meta?.target?.includes('reference_key')) return;
@@ -229,8 +304,20 @@ async function applyResolution(commitment: any, status: string, evidencePartial:
 
   // Outbound Notification
   try {
-    const rewardPolicy = commitment.rewardPenaltyPolicy as any;
-    const amount = rewardPolicy?.reward || rewardPolicy?.penalty || 0;
+    let amount = 0;
+    const bet = await prisma.bet.findUnique({ where: { commitmentId: commitment.id } });
+    
+    if (bet) {
+      if (finalStatus === 'VERIFIED_FULFILLED') {
+        amount = bet.isBootstrap ? 20 : bet.potentialPayout; // 20 is BOOTSTRAP_REWARD
+      } else {
+        amount = bet.stake;
+      }
+    } else {
+      const rewardPolicy = commitment.rewardPenaltyPolicy as any;
+      amount = rewardPolicy?.reward || rewardPolicy?.penalty || 0;
+    }
+
     let replyText = '';
     if (finalStatus === 'VERIFIED_FULFILLED') {
       replyText = `🎉 **Commitment fulfilled!**\n\n🎯 **${commitment.verificationPolicy.target}**\n✅ Completed before the deadline\n\n**Reputation**: +${amount}`;

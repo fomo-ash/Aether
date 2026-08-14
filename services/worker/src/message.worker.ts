@@ -3,6 +3,7 @@ import { AIService } from './services/ai.service';
 import { ContextResolver } from './services/context-resolver';
 import { OutboundResponder } from './services/outbound-responder';
 import { CommitmentService } from '@aether/commitments';
+import { BetService } from './services/bet.service';
 import { GithubResolver, InaccessibleRepositoryError } from './services/github-resolver';
 
 export interface MessagePayload {
@@ -77,7 +78,7 @@ export async function processMessageJob(job: Job<any>) {
       console.log(`[Message Worker] Resuming pending interaction...`);
       cumulativeContext = `${pendingState.originalMessage}\nUser Clarification: ${message}`;
       finalMessage = `Context: ${pendingState.originalMessage}\nUser Clarification: ${message}`;
-    } else if (!message.startsWith('/aether commit')) {
+    } else if (!message.startsWith('/aether commit') && !message.startsWith('/aether bet')) {
       console.log(`[Message Worker] Message is not a command and there's no pending state. Ignoring.`);
       return { status: 'ignored' };
     }
@@ -103,7 +104,9 @@ export async function processMessageJob(job: Job<any>) {
       extraction.proposedVerifier,
       extraction.targetReference,
       extraction.deadline,
-      extraction.stake
+      extraction.stake,
+      extraction.multiplier,
+      extraction.intent
     );
 
     if (!resolvedContext.isComplete) {
@@ -158,18 +161,43 @@ export async function processMessageJob(job: Job<any>) {
     // ---------------------------------------------------------
     console.log(`[Message Worker] Context is complete! Creating commitment...`);
     const commitmentCreatedAt = Date.now();
-    const commitment = await CommitmentService.createCommitment({
-      userId,
-      communityId,
-      statement: message,
-      deadline: resolvedContext.resolvedDeadline!.toISOString(),
-      verifierType: resolvedContext.proposedVerifier,
-      target: resolvedContext.resolvedTarget!,
-      successCondition: { operator: 'equals', expected: 'closed' }, // Simplified for MVP
-      conversationId: conversationId,
-      reward: resolvedContext.resolvedStake,
-      penalty: resolvedContext.resolvedStake
-    });
+    let commitmentId: string;
+    try {
+      if (extraction.intent === 'BET') {
+        const bet = await BetService.createBet({
+          userId,
+          communityId,
+          statement: resolvedContext.resolvedTarget!,
+          stake: resolvedContext.resolvedStake || 0,
+          multiplier: resolvedContext.resolvedMultiplier || 2, // Default to 2x if missing
+          deadline: resolvedContext.resolvedDeadline!.toISOString(),
+          verifierType: resolvedContext.proposedVerifier,
+          target: resolvedContext.resolvedTarget!,
+          successCondition: { operator: 'equals', expected: 'closed' }, // Simplified for MVP
+          conversationId: conversationId
+        });
+        commitmentId = bet.commitmentId;
+      } else {
+        const commitment = await CommitmentService.createCommitment({
+          userId,
+          communityId,
+          statement: message,
+          deadline: resolvedContext.resolvedDeadline!.toISOString(),
+          verifierType: resolvedContext.proposedVerifier,
+          target: resolvedContext.resolvedTarget!,
+          successCondition: { operator: 'equals', expected: 'closed' }, // Simplified for MVP
+          conversationId: conversationId,
+          reward: resolvedContext.resolvedStake,
+          penalty: resolvedContext.resolvedStake
+        });
+        commitmentId = commitment.id;
+      }
+    } catch (creationError: any) {
+      console.log(`[Message Worker] Failed to create commitment/bet: ${creationError.message}`);
+      await OutboundResponder.clearPendingState(communityId, userId, conversationId);
+      await OutboundResponder.sendMessage(communityId, userId, conversationId, `❌ **Action Failed:** ${creationError.message}`);
+      return { status: 'failed', reason: creationError.message };
+    }
 
     // ---------------------------------------------------------
     // Step 9 - Verification Queue Integration
@@ -183,15 +211,13 @@ export async function processMessageJob(job: Job<any>) {
     
     const deadlineDate = resolvedContext.resolvedDeadline!;
     const delay = Math.max(0, deadlineDate.getTime() - Date.now());
-    await verificationQueue.add('verify', { commitmentId: commitment.id }, { delay, jobId: `verify-${commitment.id}` });
+    await verificationQueue.add('verify', { commitmentId }, { delay, jobId: `verify-${commitmentId}` });
 
     await OutboundResponder.clearPendingState(communityId, userId, conversationId);
     
-    const replyText = `✅ **Commitment created**\n\n` + 
-      `🎯 **Target**: ${resolvedContext.resolvedTarget}\n` +
-      `⏰ **Deadline**: ${deadlineDate.toUTCString()}\n` +
-      `🔥 **Reputation at stake**: ${resolvedContext.resolvedStake}\n\n` +
-      `🔍 **Verification**: I'll automatically verify the target before the deadline.`;
+    const replyText = extraction.intent === 'BET' 
+      ? `🎲 **Bet placed!**\n\n🎯 **Target**: ${resolvedContext.resolvedTarget}\n⏰ **Deadline**: ${deadlineDate.toUTCString()}\n🔥 **Stake**: ${resolvedContext.resolvedStake} REP\n\n🔍 I'll check it at the deadline.`
+      : `✅ **Commitment created**\n\n🎯 **Target**: ${resolvedContext.resolvedTarget}\n⏰ **Deadline**: ${deadlineDate.toUTCString()}\n🔥 **Reputation at stake**: ${resolvedContext.resolvedStake}\n\n🔍 I'll automatically verify the target before the deadline.`;
       
     await OutboundResponder.sendMessage(communityId, userId, conversationId, replyText);
     
@@ -204,10 +230,10 @@ export async function processMessageJob(job: Job<any>) {
     console.log(`[Telemetry] commitmentCreatedAt: ${commitmentCreatedAt}`);
     console.log(`[Telemetry] totalPipelineLatencyMs: ${outboundCompletedAt - (telemetry?.receivedAt || workerStartedAt)}`);
 
-    console.log(`[Message Worker] Successfully processed job ${job.id} -> Commitment ${commitment.id}`);
+    console.log(`[Message Worker] Successfully processed job ${job.id} -> Commitment ${commitmentId}`);
     console.log(`========================================\n`);
     
-    return { status: 'success', commitmentId: commitment.id };
+    return { status: 'success', commitmentId };
   } catch (error: any) {
     console.error(`[Message Worker] Fatal error processing job ${job.id}:`, error.message);
     throw error; // Let BullMQ handle retries

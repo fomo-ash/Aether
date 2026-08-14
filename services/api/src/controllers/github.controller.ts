@@ -151,62 +151,70 @@ export class GithubController {
       }
 
       // 6. Retrieve Metadata directly via App JWT to get the installation record safely
-      if (setup_action === 'install') {
-        const app = new App({ appId, privateKey });
-        const { data: installationData } = await app.octokit.request('GET /app/installations/{installation_id}', {
-          installation_id: requestedInstallationIdNum,
-        });
+      const app = new App({ appId, privateKey });
 
-        const accountLogin = (installationData as any).account?.login || 'unknown';
-        const accountType = (installationData as any).account?.type || 'unknown';
-        const githubAccountId = (installationData as any).account?.id || 0;
+      // Link ALL installations this user has access to, not just a newly installed one
+      for (const inst of installationsData.installations || []) {
+        const currentInstallationId = inst.id;
 
-        // Upsert Installation Record
-        const githubInstallation = await prisma.githubInstallation.upsert({
-          where: { installationId: installation_id as string },
-          update: {
-            accountLogin,
-            accountType,
-            githubAccountId: BigInt(githubAccountId),
-          },
-          create: {
-            installationId: installation_id as string,
-            accountLogin,
-            accountType,
-            githubAccountId: BigInt(githubAccountId),
-          },
-        });
+        try {
+          const { data: installationData } = await app.octokit.request('GET /app/installations/{installation_id}', {
+            installation_id: currentInstallationId,
+          });
 
-        // Link to User
-        await prisma.userGithubInstallation.upsert({
-          where: {
-            userId_githubInstallationId: {
-              userId: oauthState.userId,
-              githubInstallationId: githubInstallation.id,
+          const accountLogin = (installationData as any).account?.login || 'unknown';
+          const accountType = (installationData as any).account?.type || 'unknown';
+          const githubAccountId = (installationData as any).account?.id || 0;
+
+          // Upsert Installation Record
+          const githubInstallation = await prisma.githubInstallation.upsert({
+            where: { installationId: currentInstallationId.toString() },
+            update: {
+              accountLogin,
+              accountType,
+              githubAccountId: BigInt(githubAccountId),
             },
-          },
-          update: {},
-          create: {
-            userId: oauthState.userId,
-            githubInstallationId: githubInstallation.id,
-          },
-        });
+            create: {
+              installationId: currentInstallationId.toString(),
+              accountLogin,
+              accountType,
+              githubAccountId: BigInt(githubAccountId),
+            },
+          });
 
-        // Link to Community (if applicable)
-        if (oauthState.communityId) {
-          await prisma.communityGithubInstallation.upsert({
+          // Link to User
+          await prisma.userGithubInstallation.upsert({
             where: {
-              communityId_githubInstallationId: {
-                communityId: oauthState.communityId,
+              userId_githubInstallationId: {
+                userId: oauthState.userId,
                 githubInstallationId: githubInstallation.id,
               },
             },
             update: {},
             create: {
-              communityId: oauthState.communityId,
+              userId: oauthState.userId,
               githubInstallationId: githubInstallation.id,
             },
           });
+
+          // Link to Community (if applicable)
+          if (oauthState.communityId) {
+            await prisma.communityGithubInstallation.upsert({
+              where: {
+                communityId_githubInstallationId: {
+                  communityId: oauthState.communityId,
+                  githubInstallationId: githubInstallation.id,
+                },
+              },
+              update: {},
+              create: {
+                communityId: oauthState.communityId,
+                githubInstallationId: githubInstallation.id,
+              },
+            });
+          }
+        } catch (e) {
+          console.error(`[GithubController] Failed to sync installation ${currentInstallationId}`, e);
         }
       }
 

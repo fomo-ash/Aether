@@ -20,6 +20,14 @@ enum CommitmentStatus {
   CANCELLED
 }
 
+enum RewardPoolTransactionType {
+  INITIAL_FUNDING
+  BET_REWARD
+  BET_BOOTSTRAP_REWARD
+  BET_FORFEIT
+  MANUAL_ADJUSTMENT
+}
+
 enum ResolutionStatus {
   FULFILLED
   MISSED
@@ -31,6 +39,12 @@ enum TransactionType {
   COMMITMENT_MISSED
   BET_WON
   BET_LOST
+  BET_STAKE_LOCK
+  BET_STAKE_RELEASE
+  BET_STAKE_FORFEIT
+  BET_REWARD
+  BET_BOOTSTRAP_REWARD
+  BET_REFUND
   MANUAL_ADJUSTMENT
 }
 
@@ -42,8 +56,14 @@ enum BetStatus {
   EVIDENCE_COLLECTION
   RESOLVED
   REPUTATION_SETTLED
-  CANCELLED
   UNRESOLVED
+
+  ACTIVE
+  AWAITING_VERIFICATION
+  FULFILLED
+  MISSED
+  CANCELLED
+  EXPIRED
 }
 
 // ----------------------------------------------------------------------------
@@ -52,26 +72,27 @@ enum BetStatus {
 
 /// Represents a human or system actor interacting with Aether.
 model User {
-  id         String   @id @default(uuid())
-  email      String?  @unique
-  apiKeyHash String?  @unique @map("api_key_hash")
-  createdAt  DateTime @default(now()) @map("created_at")
+  id                String   @id @default(uuid())
+  email             String?  @unique
+  apiKeyHash        String?  @unique @map("api_key_hash")
+  bootstrapBetsUsed Int      @default(0) @map("bootstrap_bets_used")
+  createdAt         DateTime @default(now()) @map("created_at")
 
-  commitments        Commitment[]
-  reputationAccounts ReputationAccount[]
-  betParticipants    BetParticipant[]
-  communityMembers   CommunityMember[]
-  identities         UserIdentity[]
+  commitments         Commitment[]
+  reputationAccounts  ReputationAccount[]
+  bets                Bet[]
+  communityMembers    CommunityMember[]
+  identities          UserIdentity[]
   githubInstallations UserGithubInstallation[]
 
   @@map("users")
 }
 
 model UserIdentity {
-  id         String   @id @default(uuid())
-  userId     String   @map("user_id")
+  id         String @id @default(uuid())
+  userId     String @map("user_id")
   platform   String
-  externalId String   @map("external_id")
+  externalId String @map("external_id")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -81,19 +102,19 @@ model UserIdentity {
 
 /// Represents a Discord server, Telegram group, Slack workspace, etc.
 model Community {
-  id         String   @id @default(uuid())
-  name       String
-  platform   String // e.g., "discord", "telegram"
+  id                   String   @id @default(uuid())
+  name                 String
+  platform             String // e.g., "discord", "telegram"
   externalId           String   @map("external_id") // e.g., Discord server ID
   defaultRepository    String?  @map("default_repository") // e.g. "owner/aether"
   githubInstallationId String?  @map("github_installation_id") // Auth for GitHub App
   createdAt            DateTime @default(now()) @map("created_at")
   updatedAt            DateTime @updatedAt @map("updated_at")
 
-  members            CommunityMember[]
-  reputationAccounts ReputationAccount[]
-  commitments        Commitment[]
-  bets               Bet[]
+  members             CommunityMember[]
+  reputationAccounts  ReputationAccount[]
+  commitments         Commitment[]
+  bets                Bet[]
   githubInstallations CommunityGithubInstallation[]
 
   @@unique([platform, externalId])
@@ -118,12 +139,13 @@ model CommunityMember {
 
 /// The account tracking a user's reputation points within a specific Community.
 model ReputationAccount {
-  id          String   @id @default(uuid())
-  communityId String   @map("community_id")
-  userId      String   @map("user_id")
-  balance     Int      @default(0) // Derived from sum of transactions
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id            String   @id @default(uuid())
+  communityId   String   @map("community_id")
+  userId        String   @map("user_id")
+  balance       Int      @default(0) // Available
+  lockedBalance Int      @default(0) @map("locked_balance") // Locked in active bets
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
 
   community    Community               @relation(fields: [communityId], references: [id], onDelete: Restrict)
   user         User                    @relation(fields: [userId], references: [id], onDelete: Restrict)
@@ -132,6 +154,31 @@ model ReputationAccount {
   @@unique([userId, communityId])
   @@index([communityId, balance])
   @@map("reputation_accounts")
+}
+
+model RewardPool {
+  id       String  @id @default(uuid())
+  isGlobal Boolean @unique @default(true) // Enforces singleton
+  balance  Int     @default(0)
+
+  transactions RewardPoolTransaction[]
+
+  @@map("reward_pool")
+}
+
+model RewardPoolTransaction {
+  id           String                    @id @default(uuid())
+  rewardPoolId String                    @map("reward_pool_id")
+  type         RewardPoolTransactionType
+  amount       Int // Positive or negative
+  betId        String?                   @map("bet_id")
+  referenceKey String                    @unique @map("reference_key")
+  createdAt    DateTime                  @default(now()) @map("created_at")
+  metadata     Json?
+
+  rewardPool RewardPool @relation(fields: [rewardPoolId], references: [id], onDelete: Restrict)
+
+  @@map("reward_pool_transactions")
 }
 
 /// An immutable ledger of reputation changes.
@@ -182,8 +229,7 @@ model Commitment {
   reputationTransactions ReputationTransaction[]
 
   // For Bets: A commitment might be part of a bet
-  betId String? @map("bet_id")
-  bet   Bet?    @relation("BetCommitments", fields: [betId], references: [id], onDelete: SetNull)
+  bet Bet? @relation("BetCommitments")
 
   @@index([userId])
   @@index([communityId])
@@ -245,17 +291,26 @@ model Resolution {
 
 /// Represents a specialized commitment involving competing claims (The Bet).
 model Bet {
-  id             String    @id @default(uuid())
-  communityId    String    @map("community_id")
-  title          String
-  status         BetStatus @default(BET_PROPOSED)
-  resolutionDate DateTime? @map("resolution_date")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  finalVerdict   String?   @map("final_verdict")
+  id              String    @id @default(uuid())
+  creatorId       String    @map("creator_id")
+  communityId     String    @map("community_id")
+  status          BetStatus @default(ACTIVE)
+  stake           Int
+  multiplier      Int? // Nullable for bootstrap bets
+  potentialPayout Int       @map("potential_payout")
+  isBootstrap     Boolean   @default(false) @map("is_bootstrap")
 
+  commitmentId String   @unique @map("commitment_id")
+  deadline     DateTime // Mirrored/synced from Commitment for query speed
+
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+  resolvedAt          DateTime? @map("resolved_at")
+  settlementReference String?   @unique @map("settlement_reference")
+
+  creator                User                    @relation(fields: [creatorId], references: [id], onDelete: Restrict)
   community              Community               @relation(fields: [communityId], references: [id], onDelete: Restrict)
-  participants           BetParticipant[]
-  commitments            Commitment[]            @relation("BetCommitments")
+  commitment             Commitment              @relation("BetCommitments", fields: [commitmentId], references: [id], onDelete: Restrict)
   reputationTransactions ReputationTransaction[]
   evidence               Evidence[]
   resolution             Resolution?
@@ -263,20 +318,6 @@ model Bet {
 
   @@index([communityId])
   @@map("bets")
-}
-
-model BetParticipant {
-  id     String @id @default(uuid())
-  betId  String @map("bet_id")
-  userId String @map("user_id")
-  stake  Int // Amount of reputation staked
-  claim  String // What they are predicting
-
-  bet  Bet  @relation(fields: [betId], references: [id], onDelete: Cascade)
-  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
-
-  @@unique([betId, userId])
-  @@map("bet_participants")
 }
 
 /// An immutable ledger of state transitions for auditing.
@@ -349,4 +390,3 @@ model CommunityGithubInstallation {
   @@id([communityId, githubInstallationId])
   @@map("community_github_installations")
 }
-

@@ -9,6 +9,7 @@ export interface ResolvedContext {
   resolvedTarget?: string;
   resolvedDeadline?: Date;
   resolvedStake?: number;
+  resolvedMultiplier?: number;
   proposedVerifier: string;
 }
 
@@ -21,19 +22,30 @@ export class ContextResolver {
     extractedVerifier: string | null | undefined,
     extractedTarget: string | null | undefined,
     extractedDeadline: string | null | undefined,
-    extractedStake: number | null | undefined
+    extractedStake: number | null | undefined,
+    extractedMultiplier?: number | null,
+    intent?: 'COMMITMENT' | 'BET' | 'NOT_COMMITMENT' | 'AMBIGUOUS'
   ): Promise<ResolvedContext> {
 
-    // Default to github.issue_status if none proposed
-    const verifier = extractedVerifier || 'github.issue_status';
+    // Map LLM-extracted aliases to strict internal verifier types
+    let verifier = extractedVerifier || 'github.issue_status';
+    if (verifier === 'github.issue') verifier = 'github.issue_status';
+    if (verifier === 'github.pull_request') verifier = 'github.pr_merged';
 
     const missing: string[] = [];
     let resolvedTarget: string | undefined = undefined;
     let resolvedDeadline: Date | undefined = undefined;
 
     // 1. Resolve Deadline
-    if (!extractedDeadline) {
-      missing.push('deadline');
+    if (extractedDeadline === 'UNKNOWN_FUTURE') {
+      missing.push('exact date/deadline for this future event (e.g., "by Aug 23")');
+    } else if (!extractedDeadline) {
+      // If it's a web search, default to 5 seconds from now for instant evaluation
+      if (verifier === 'web.search') {
+        resolvedDeadline = new Date(Date.now() + 5 * 1000);
+      } else {
+        missing.push('deadline');
+      }
     } else {
       const parsedDate = new Date(extractedDeadline);
       if (isNaN(parsedDate.getTime())) {
@@ -45,10 +57,27 @@ export class ContextResolver {
 
     // 2. Resolve Stake
     let resolvedStake: number | undefined = undefined;
-    if (extractedStake === undefined || extractedStake === null || extractedStake < 5 || extractedStake > 20) {
-      missing.push('reputation stake amount (must be an integer between 5 and 20)');
+    let resolvedMultiplier: number | undefined = undefined;
+    
+    if (intent === 'BET') {
+      if (extractedStake === undefined || extractedStake === null || extractedStake < 0) {
+        missing.push('reputation stake amount (must be positive integer, 0 for bootstrap)');
+      } else {
+        resolvedStake = extractedStake;
+      }
+
+      if (extractedMultiplier !== undefined && extractedMultiplier !== null) {
+        if (![2, 3, 5].includes(extractedMultiplier)) {
+          missing.push('valid multiplier (must be 2, 3, or 5)');
+        } else {
+          resolvedMultiplier = extractedMultiplier;
+        }
+      }
     } else {
-      resolvedStake = extractedStake;
+      // For COMMITMENT, stake and multiplier are not required.
+      // But if user supplied them accidentally, we can pass them along or ignore them.
+      resolvedStake = extractedStake ?? undefined;
+      resolvedMultiplier = extractedMultiplier ?? undefined;
     }
 
     // 3. Resolve Target based on Verifier Requirements
@@ -65,7 +94,7 @@ export class ContextResolver {
         const repoMatch = extractedTarget.match(/([a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+)/);
         const repoBase = repoMatch ? repoMatch[1] : community?.defaultRepository;
 
-        if (verifier === 'github.issue' || verifier === 'github.pull_request') {
+        if (verifier === 'github.issue_status' || verifier === 'github.pr_merged') {
           const numberMatch = extractedTarget.match(/#?(\d+)/);
           if (!numberMatch) {
             missing.push('issue/PR number');
@@ -108,6 +137,7 @@ export class ContextResolver {
       resolvedTarget,
       resolvedDeadline,
       resolvedStake,
+      resolvedMultiplier,
       proposedVerifier: verifier
     };
   }

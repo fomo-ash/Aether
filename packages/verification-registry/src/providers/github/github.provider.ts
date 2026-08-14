@@ -5,8 +5,8 @@ export class GithubProvider implements VerificationProvider {
   readonly name = 'github';
 
   private supportedTypes = [
-    'github.issue',
-    'github.pull_request',
+    'github.issue_status',
+    'github.pr_merged',
     'github.check_run',
     'github.commit_status',
     'github.deployment'
@@ -25,9 +25,9 @@ export class GithubProvider implements VerificationProvider {
 
     try {
       switch (verifierType) {
-        case 'github.issue':
+        case 'github.issue_status':
           return await this.verifyIssue(octokit, context.target);
-        case 'github.pull_request':
+        case 'github.pr_merged':
           return await this.verifyPullRequest(octokit, context.target);
         case 'github.check_run':
           return await this.verifyCheckRun(octokit, context.target);
@@ -50,7 +50,7 @@ export class GithubProvider implements VerificationProvider {
   private async verifyIssue(octokit: any, target: string): Promise<Partial<EvidenceData>> {
     // Expected target: owner/repo#issue_number
     const match = target.match(/^([^/]+)\/(.+)#(\d+)$/);
-    if (!match) throw new Error('Invalid target format for github.issue. Expected owner/repo#issue_number');
+    if (!match) throw new Error('Invalid target format for github.issue_status. Expected owner/repo#issue_number');
     const [, owner, repo, issue_number] = match;
 
     const { data } = await octokit.issues.get({ owner, repo, issue_number: parseInt(issue_number, 10) });
@@ -72,7 +72,7 @@ export class GithubProvider implements VerificationProvider {
 
   private async verifyPullRequest(octokit: any, target: string): Promise<Partial<EvidenceData>> {
     const match = target.match(/^([^/]+)\/(.+)#(\d+)$/);
-    if (!match) throw new Error('Invalid target format for github.pull_request. Expected owner/repo#pr_number');
+    if (!match) throw new Error('Invalid target format for github.pr_merged. Expected owner/repo#pr_number');
     const [, owner, repo, pull_number] = match;
 
     const { data } = await octokit.pulls.get({ owner, repo, pull_number: parseInt(pull_number, 10) });

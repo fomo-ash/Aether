@@ -104,27 +104,32 @@ async function bootstrap() {
       if (message.text.trim() === '/aether') {
         console.log(`[Caspian Ingress] Intercepted help command.`);
         const helpLines = [
-          `🤖 **Aether**`,
+          `🤖 **Aether: The Autonomous AI Verifier**`,
           ``,
-          `**Verification**`,
+          `**1. Commitments** (No risk)`,
+          `\`/aether commit <what you will do>\``,
+          `Create a personal commitment. Aether will verify it and reward you if fulfilled.`,
+          `*Example: /aether commit I'll close fomo-ash/Forester#7 by tomorrow*`,
+          ``,
+          `**2. Bets** (High risk, high reward)`,
+          `\`/aether bet <amount> REP on <multiplier>x <outcome>\``,
+          `Stake your REP on a future event or current fact. Multipliers can be 2x, 3x, or 5x.`,
+          `*Example: /aether bet 20 REP on 2x Bitcoin is currently trading above $50,000*`,
+          `*(Note: Brand new users get 3 FREE "Bootstrap" bets! Just bet "0 REP")*`,
+          ``,
+          `**3. Stateless Checks** (Instant Fact-Checking)`,
           `\`/aether check <claim>\``,
-          `Instantly verify a claim without creating a commitment or risking REP.`,
+          `Instantly verify a factual claim without creating any database records.`,
+          `*Example: /aether check India won the 2011 Cricket World Cup*`,
           ``,
-          `**Commitments**`,
-          `\`/aether commit <commitment>\``,
-          `Create a commitment and let Aether verify it automatically.`,
+          `**4. Reputation & Account**`,
+          `\`/aether rep\` (or \`/aether status\`)`,
+          `View your current REP balance, tier, and recent transaction history.`,
           ``,
-          `**Reputation**`,
-          `\`/aether rep\``,
-          `View your current REP, tier, progress, and recent reputation changes.`,
-          ``,
-          `\`/aether status\``,
-          `View your current Aether/reputation status.`,
-          ``,
-          `**Examples**`,
-          `\`/aether check India won the 2011 Cricket World Cup\``,
-          `\`/aether commit I'll close fomo-ash/Forester#7 by tomorrow\``,
-          `\`/aether rep\``
+          `💡 **Important Guidelines:**`,
+          `- Aether supports **GitHub** tracking (Issues, PRs, Deployments) and **Web Search** (for facts/news).`,
+          `- If your bet is a factual check (like Bitcoin's price), you don't need a deadline.`,
+          `- If your bet/commitment is in the future, you **MUST** specify a time (e.g. "by Friday", "tomorrow", "next week").`
         ];
         try {
           await client.sendMessage(message.conversationId, helpLines.join('\n'));
@@ -207,7 +212,7 @@ async function bootstrap() {
       }
 
       // Message Filtering
-      const isCommand = message.text.startsWith('/aether commit');
+      const isCommand = message.text.startsWith('/aether commit') || message.text.startsWith('/aether bet');
       const pendingKey = `clarify:${community.id}:${userId}:${message.conversationId}`;
       const hasPending = await redis.exists(pendingKey);
       

@@ -28,9 +28,9 @@ export class CommitmentController {
         data: commitment
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating commitment:', error);
-      return res.status(500).json({ error: 'Internal Server Error' });
+      return res.status(500).json({ error: 'Internal Server Error', message: error.message, stack: error.stack });
     }
   }
 

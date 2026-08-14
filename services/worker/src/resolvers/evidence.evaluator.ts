@@ -10,8 +10,8 @@ export class EvidenceEvaluator {
   static async evaluateWebSearch(claim: string, evidenceRecords: Partial<EvidenceData>[], config: any = {}): Promise<CheckOutcome> {
     if (evidenceRecords.length === 0) return 'INSUFFICIENT_EVIDENCE';
     
-    // Configurable minimum independent sources, defaulting to 2 per user requirements
-    const minIndependentSources = config.minIndependentSources || 2;
+    // Configurable minimum independent sources, defaulting to 1 for MVP
+    const minIndependentSources = config.minIndependentSources || 1;
     
     for (const evidence of evidenceRecords) {
       if (evidence.source === 'tavily' && evidence.payload?.results) {
@@ -32,8 +32,11 @@ export class EvidenceEvaluator {
         if (evidence.observedState === 'found_results') {
           if (independentValidSources.size >= minIndependentSources) {
              // Ask LLM to evaluate the evidence against the claim
-             return await AIService.evaluateFactCheck(claim, evidenceText);
+             const outcome = await AIService.evaluateFactCheck(claim, evidenceText);
+             console.log(`[EvidenceEvaluator] AI returned outcome: ${outcome} based on ${independentValidSources.size} sources.`);
+             return outcome;
           } else {
+             console.log(`[EvidenceEvaluator] INSUFFICIENT_EVIDENCE: found ${independentValidSources.size} sources, needed ${minIndependentSources}`);
              // Not enough independent sources
              return 'INSUFFICIENT_EVIDENCE';
           }

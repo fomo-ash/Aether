@@ -6,7 +6,8 @@ export const ExtractionResultSchema = z.object({
   targetReference: z.string().nullable().optional(),
   deadline: z.string().nullable().optional(),
   proposedVerifier: z.string().nullable().optional(),
-  stake: z.number().nullable().optional(),
+  stake: z.coerce.number().nullable().optional(),
+  multiplier: z.coerce.number().nullable().optional(),
   reward: z.number().nullable().optional(),
   penalty: z.number().nullable().optional(),
   missingInformation: z.array(z.string()).nullable().optional()
