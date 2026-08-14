@@ -12,6 +12,42 @@ if (!process.env.REDIS_URL) throw new Error('REDIS_URL is required for productio
 const redisUrl = process.env.REDIS_URL;
 const redis = new Redis(redisUrl);
 
+function parseNaturalDeadline(str?: string): Date {
+  if (!str) return new Date(Date.now() + 24 * 3600 * 1000);
+  const trimmed = str.trim().toLowerCase();
+  const now = Date.now();
+
+  const minMatch = trimmed.match(/^(\d+)\s*(?:m|min|mins|minute|minutes)$/);
+  if (minMatch) {
+    return new Date(now + parseInt(minMatch[1], 10) * 60 * 1000);
+  }
+
+  const hrMatch = trimmed.match(/^(\d+)\s*(?:h|hr|hrs|hour|hours)$/);
+  if (hrMatch) {
+    return new Date(now + parseInt(hrMatch[1], 10) * 3600 * 1000);
+  }
+
+  const dayMatch = trimmed.match(/^(\d+)\s*(?:d|day|days)$/);
+  if (dayMatch) {
+    return new Date(now + parseInt(dayMatch[1], 10) * 24 * 3600 * 1000);
+  }
+
+  if (trimmed.includes('tomorrow')) {
+    return new Date(now + 24 * 3600 * 1000);
+  }
+
+  if (trimmed.includes('next week')) {
+    return new Date(now + 7 * 24 * 3600 * 1000);
+  }
+
+  const parsed = new Date(str);
+  if (!isNaN(parsed.getTime()) && parsed.getTime() > now) {
+    return parsed;
+  }
+
+  return new Date(now + 24 * 3600 * 1000);
+}
+
 async function bootstrap() {
   console.log(`[Caspian Ingress] Starting adapter...`);
 
@@ -122,21 +158,26 @@ async function bootstrap() {
           `Instantly verify a factual claim without creating any database records.`,
           `*Example: /aether check India won the 2011 Cricket World Cup*`,
           ``,
-          `📊 **REPUTATION**`,
-          `\`/aether rep\``,
-          `View your REP and tier.`,
+          `📊 **REPUTATION & LEADERBOARDS**`,
+          `\`/aether rep\` — View your REP balance, tier, and Impact.`,
+          `\`/aether leaderboard\` — Global REP leaderboard.`,
+          `\`/aether impact\` — View community Impact score.`,
+          `\`/aether impact leaderboard\` — Community Impact leaderboard.`,
+          `\`/aether bets\` — View your active bets.`,
           ``,
-          `\`/aether leaderboard\``,
-          `Global REP leaderboard.`,
+          `🥊 **HEAD-TO-HEAD CHALLENGES**`,
+          `\`/aether challenge @user <stake> REP on <claim> by <deadline>\``,
+          `\`/aether challenge open <stake> REP on <claim> by <deadline>\``,
+          `\`/aether accept <challengeId>\``,
+          `\`/aether cancel <challengeId>\``,
+          `\`/aether challenges\` — List open/active challenges.`,
           ``,
-          `\`/aether impact\``,
-          `View your community Impact.`,
-          ``,
-          `\`/aether impact leaderboard\``,
-          `Community Impact leaderboard.`,
-          ``,
-          `\`/aether bets\``,
-          `View active bets.`,
+          `📊 **PREDICTION MARKETS (POOLS)**`,
+          `\`/aether market create "<claim>" by <deadline>\``,
+          `\`/aether bet <marketId> YES <amount>\``,
+          `\`/aether bet <marketId> NO <amount>\``,
+          `\`/aether markets\` — List open prediction pools.`,
+          `\`/aether market <marketId>\` — View market odds/details.`,
           ``,
           `💡 **Important Guidelines:**`,
           `- Aether supports **GitHub** tracking (Issues, PRs, Deployments) and **Web Search** (for facts/news).`,
@@ -368,9 +409,439 @@ async function bootstrap() {
         return;
       }
 
+      // Handle Challenges Listing Command
+      if (message.text.trim() === '/aether challenges') {
+        console.log(`[Caspian Ingress] Intercepted challenges listing command.`);
+        try {
+          const res = await fetch(`${AETHER_API_URL}/api/multiplayer/challenges?communityId=${community.id}`);
+          if (res.ok) {
+            const challenges = await res.json();
+            if (challenges.length === 0) {
+              await client.sendMessage(message.conversationId, `🥊 **HEAD-TO-HEAD CHALLENGES**\n\nNo active or open challenges in this community.\nCreate one with:\n\`/aether challenge open <stake> REP on <claim> by <deadline>\``);
+              return;
+            }
+
+            const lines = [
+              `🥊 **COMMUNITY CHALLENGES (${challenges.length})**`,
+              ``
+            ];
+
+            challenges.forEach((c: any, idx: number) => {
+              const opponentStr = c.targetUserId ? `Targeted` : `Open to Anyone`;
+              const deadlineStr = new Date(c.deadline).toUTCString();
+              lines.push(`**${idx + 1}. ID:** \`${c.id.slice(0, 8)}\` — ${c.claim}`);
+              lines.push(`- Stake: ${c.targetStake} REP each (Pot: ${c.totalPot} REP) | Status: \`${c.status}\``);
+              lines.push(`- Opponent: ${opponentStr} | Deadline: ${deadlineStr}`);
+              if (c.status === 'OFFERED' && c.creatorId !== userId) {
+                lines.push(`- *To accept: /aether accept ${c.id.slice(0, 8)}*`);
+              }
+              lines.push(``);
+            });
+
+            await client.sendMessage(message.conversationId, lines.join('\n'));
+          }
+        } catch (err: any) {
+          console.error(`[Caspian Ingress] Error fetching challenges: ${err.message}`);
+        }
+        return;
+      }
+
+      // Handle Challenge Creation (/aether challenge ...)
+      if (message.text.trim().startsWith('/aether challenge')) {
+        const rest = message.text.replace(/^\/aether\s+challenge\s*/i, '').trim();
+        console.log(`[Caspian Ingress] Intercepted challenge creation: "${rest}"`);
+        
+        let targetStr = 'open';
+        let stakeStr = '0';
+        let claimStr = '';
+        let deadlineStr = 'tomorrow';
+
+        // Format A: /aether challenge @user [for] 20 REP on <claim> [by <deadline>]
+        // Format B: /aether challenge open [for] 20 REP on <claim> [by <deadline>]
+        const matchWithTarget = rest.match(/^(open|@?\S+|<@!?\d+>)\s+(?:for\s+)?(\d+)\s+REP\s+on\s+(.+?)(?:\s+by\s+(.+))?$/i);
+        
+        // Format C: /aether challenge [for] 20 REP on <claim> [by <deadline>] (implied open)
+        const matchNoTarget = rest.match(/^(?:for\s+)?(\d+)\s+REP\s+on\s+(.+?)(?:\s+by\s+(.+))?$/i);
+
+        if (matchWithTarget) {
+          targetStr = matchWithTarget[1];
+          stakeStr = matchWithTarget[2];
+          claimStr = matchWithTarget[3];
+          deadlineStr = matchWithTarget[4] || 'tomorrow';
+        } else if (matchNoTarget) {
+          targetStr = 'open';
+          stakeStr = matchNoTarget[1];
+          claimStr = matchNoTarget[2];
+          deadlineStr = matchNoTarget[3] || 'tomorrow';
+        } else {
+          await client.sendMessage(
+            message.conversationId,
+            `⚠️ **Invalid Challenge Format**\n\nUse:\n\`/aether challenge open <stake> REP on <claim> [by <deadline>]\`\nOR\n\`/aether challenge @user <stake> REP on <claim> [by <deadline>]\`\n\n*Example: /aether challenge @user 20 REP on Bitcoin price was above $20k in 2018*`
+          );
+          return;
+        }
+
+        const stake = parseInt(stakeStr, 10);
+        let targetUserId: string | null = null;
+
+        if (targetStr.toLowerCase() !== 'open') {
+          const cleanTarget = targetStr.replace(/^[<@!]+|[>]+$/g, '');
+          
+          const targetIdentity = await prisma.userIdentity.findFirst({
+            where: {
+              OR: [
+                { externalId: cleanTarget },
+                { externalId: targetStr }
+              ]
+            }
+          });
+
+          if (targetIdentity) {
+            targetUserId = targetIdentity.userId;
+          } else {
+            const member = await prisma.communityMember.findFirst({
+              where: {
+                communityId: community.id,
+                displayName: { contains: cleanTarget, mode: 'insensitive' }
+              }
+            });
+            if (member) targetUserId = member.userId;
+          }
+        }
+
+        try {
+          const calculatedDeadline = parseNaturalDeadline(deadlineStr);
+          const res = await fetch(`${AETHER_API_URL}/api/multiplayer/challenge`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              communityId: community.id,
+              creatorId: userId,
+              targetUserId,
+              claim: claimStr.replace(/^["']|["']$/g, ''),
+              normalizedClaim: claimStr.replace(/^["']|["']$/g, ''),
+              deadline: calculatedDeadline.toISOString(),
+              stake
+            })
+          });
+
+          if (res.ok) {
+            const bet = await res.json();
+            await redis.set(`mp_conv:${bet.id}`, message.conversationId, 'EX', 7 * 24 * 3600);
+            const opponentDisplay = targetStr.toLowerCase() === 'open' ? 'Open to Anyone' : targetStr;
+            const lines = [
+              `🥊 **HEAD-TO-HEAD CHALLENGE CREATED**`,
+              ``,
+              `**ID:** \`${bet.id}\``,
+              `**Claim:** "${bet.claim}"`,
+              `**Stake:** ${bet.targetStake} REP each (Total Pot: ${bet.targetStake * 2} REP in Escrow)`,
+              `**Opponent:** ${opponentDisplay}`,
+              `**Status:** \`OFFERED\``,
+              ``,
+              `*Opponent can accept using:*`,
+              `\`/aether accept ${bet.id}\``
+            ];
+            await client.sendMessage(message.conversationId, lines.join('\n'));
+          } else {
+            const err = await res.json();
+            await client.sendMessage(message.conversationId, `❌ **Challenge Creation Failed**: ${err.error || 'Unknown error'}`);
+          }
+        } catch (err: any) {
+          console.error(`[Caspian Ingress] Error creating challenge: ${err.message}`);
+        }
+        return;
+      }
+
+      // Handle Challenge Acceptance (/aether accept <id>)
+      if (message.text.trim().startsWith('/aether accept ')) {
+        const idArg = message.text.replace('/aether accept ', '').trim();
+        console.log(`[Caspian Ingress] Intercepted challenge acceptance: "${idArg}"`);
+        
+        try {
+          // Resolve full ID if prefix provided
+          let betId = idArg;
+          if (idArg.length < 30) {
+            const match = await prisma.multiplayerBet.findFirst({
+              where: { id: { startsWith: idArg }, communityId: community.id }
+            });
+            if (match) betId = match.id;
+          }
+
+          const res = await fetch(`${AETHER_API_URL}/api/multiplayer/challenge/accept`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              multiplayerBetId: betId,
+              userId,
+              communityId: community.id,
+              conversationId: message.conversationId
+            })
+          });
+
+          if (res.ok) {
+            const bet = await res.json();
+            const lines = [
+              `🥊 **CHALLENGE ACCEPTED & ACTIVE!**`,
+              ``,
+              `**ID:** \`${bet.id}\``,
+              `**Claim:** "${bet.claim}"`,
+              `**Total Pot:** ${bet.totalPot} REP in Escrow`,
+              `**Status:** \`ACTIVE\``,
+              ``,
+              `🔎 *Aether is autonomously verifying the claim right now... Stand by for the verdict!*`
+            ];
+            await client.sendMessage(message.conversationId, lines.join('\n'));
+          } else {
+            const err = await res.json();
+            await client.sendMessage(message.conversationId, `❌ **Acceptance Failed**: ${err.error || 'Unknown error'}`);
+          }
+        } catch (err: any) {
+          console.error(`[Caspian Ingress] Error accepting challenge: ${err.message}`);
+        }
+        return;
+      }
+
+      // Handle Challenge Cancellation (/aether cancel <id>)
+      if (message.text.trim().startsWith('/aether cancel ')) {
+        const idArg = message.text.replace('/aether cancel ', '').trim();
+        console.log(`[Caspian Ingress] Intercepted challenge cancellation: "${idArg}"`);
+        
+        try {
+          let betId = idArg;
+          if (idArg.length < 30) {
+            const match = await prisma.multiplayerBet.findFirst({
+              where: { id: { startsWith: idArg }, communityId: community.id }
+            });
+            if (match) betId = match.id;
+          }
+
+          const res = await fetch(`${AETHER_API_URL}/api/multiplayer/challenge/cancel`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              multiplayerBetId: betId,
+              userId,
+              communityId: community.id
+            })
+          });
+
+          if (res.ok) {
+            await client.sendMessage(message.conversationId, `🚫 **Challenge Cancelled**: Your stake has been fully refunded.`);
+          } else {
+            const err = await res.json();
+            await client.sendMessage(message.conversationId, `❌ **Cancellation Failed**: ${err.error || 'Unknown error'}`);
+          }
+        } catch (err: any) {
+          console.error(`[Caspian Ingress] Error cancelling challenge: ${err.message}`);
+        }
+        return;
+      }
+
+      // Handle Prediction Markets Listing (/aether markets)
+      if (message.text.trim() === '/aether markets') {
+        console.log(`[Caspian Ingress] Intercepted prediction markets listing.`);
+        try {
+          const res = await fetch(`${AETHER_API_URL}/api/multiplayer/markets?communityId=${community.id}`);
+          if (res.ok) {
+            const markets = await res.json();
+            if (markets.length === 0) {
+              await client.sendMessage(message.conversationId, `📊 **PREDICTION MARKETS**\n\nNo active prediction markets in this community.\nCreate one with:\n\`/aether market create "<claim>" by <deadline>\``);
+              return;
+            }
+
+            const lines = [
+              `📊 **PREDICTION MARKETS (${markets.length})**`,
+              ``
+            ];
+
+            markets.forEach((m: any, idx: number) => {
+              const deadlineStr = new Date(m.deadline).toUTCString();
+              lines.push(`**${idx + 1}. ID:** \`${m.id.slice(0, 8)}\` — "${m.claim}"`);
+              lines.push(`- YES Pool: ${m.yesPool} REP | NO Pool: ${m.noPool} REP | Total Pot: ${m.totalPot} REP`);
+              lines.push(`- Participants: ${m.participants?.length || 0} | Closes: ${deadlineStr}`);
+              lines.push(`- *Bet with: /aether bet ${m.id.slice(0, 8)} YES <amount>*`);
+              lines.push(``);
+            });
+
+            await client.sendMessage(message.conversationId, lines.join('\n'));
+          }
+        } catch (err: any) {
+          console.error(`[Caspian Ingress] Error fetching markets: ${err.message}`);
+        }
+        return;
+      }
+
+      // Handle Prediction Market Creation (/aether market create ...)
+      if (message.text.trim().startsWith('/aether market create ')) {
+        const rest = message.text.replace('/aether market create ', '').trim();
+        console.log(`[Caspian Ingress] Intercepted market creation: "${rest}"`);
+        
+        const match = rest.match(/^["']?(.+?)["']?\s+by\s+(.+)$/i);
+        if (!match) {
+          await client.sendMessage(
+            message.conversationId,
+            `⚠️ **Invalid Market Format**\n\nUse:\n\`/aether market create "<claim>" by <deadline>\`\n\n*Example: /aether market create "Will Bitcoin be above $100k?" by August 31*`
+          );
+          return;
+        }
+
+        const [, claimStr, deadlineStr] = match;
+        const calculatedDeadline = parseNaturalDeadline(deadlineStr);
+
+        try {
+          const res = await fetch(`${AETHER_API_URL}/api/multiplayer/market`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              communityId: community.id,
+              creatorId: userId,
+              claim: claimStr.replace(/^["']|["']$/g, ''),
+              normalizedClaim: claimStr.replace(/^["']|["']$/g, ''),
+              deadline: calculatedDeadline.toISOString()
+            })
+          });
+
+          if (res.ok) {
+            const market = await res.json();
+            await redis.set(`mp_conv:${market.id}`, message.conversationId, 'EX', 7 * 24 * 3600);
+            const lines = [
+              `📊 **PREDICTION MARKET OPENED!**`,
+              ``,
+              `**ID:** \`${market.id}\``,
+              `**Claim:** "${market.claim}"`,
+              `**Status:** \`OPEN\``,
+              `**Deadline:** ${new Date(market.deadline).toUTCString()}`,
+              ``,
+              `*Join this market using:*`,
+              `\`/aether bet ${market.id.slice(0, 8)} YES <amount>\``,
+              `\`/aether bet ${market.id.slice(0, 8)} NO <amount>\``
+            ];
+            await client.sendMessage(message.conversationId, lines.join('\n'));
+          } else {
+            const err = await res.json();
+            await client.sendMessage(message.conversationId, `❌ **Market Creation Failed**: ${err.error || 'Unknown error'}`);
+          }
+        } catch (err: any) {
+          console.error(`[Caspian Ingress] Error creating market: ${err.message}`);
+        }
+        return;
+      }
+
+      // Handle Prediction Market Bet Placement (/aether bet <marketId> YES/NO <stake>)
+      const marketBetMatch = message.text.trim().match(/^\/aether\s+bet\s+(\S+)\s+(YES|NO)(?:\s+(.*))?$/i);
+      if (marketBetMatch) {
+        const [, idArg, sideRaw, stakeArg] = marketBetMatch;
+        const side = sideRaw.toUpperCase() as 'YES' | 'NO';
+        const cleanStake = (stakeArg || '').replace(/[^\d]/g, '');
+        const stake = cleanStake ? parseInt(cleanStake, 10) : 0;
+
+        if (!stake || stake <= 0) {
+          await client.sendMessage(
+            message.conversationId,
+            `⚠️ **Invalid Amount**\n\nPlease specify how much REP you want to bet.\n*Example: /aether bet ${idArg} ${side} 20*`
+          );
+          return;
+        }
+
+        console.log(`[Caspian Ingress] Intercepted market bet: ID ${idArg}, Side ${side}, Stake ${stake}`);
+
+        try {
+          let betId = idArg;
+          if (idArg.length < 30) {
+            const match = await prisma.multiplayerBet.findFirst({
+              where: { id: { startsWith: idArg }, communityId: community.id, betType: 'PREDICTION_POOL' }
+            });
+            if (match) betId = match.id;
+          }
+
+          const res = await fetch(`${AETHER_API_URL}/api/multiplayer/market/join`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              multiplayerBetId: betId,
+              userId,
+              communityId: community.id,
+              side,
+              stake
+            })
+          });
+
+          if (res.ok) {
+            const market = await prisma.multiplayerBet.findUnique({ where: { id: betId } });
+            const lines = [
+              `✅ **POSITION PLACED!**`,
+              ``,
+              `**Market:** "${market?.claim}"`,
+              `**Side:** \`${side}\``,
+              `**Your Stake:** ${stake} REP (Locked in Escrow)`,
+              `**Current Pools:** YES: ${market?.yesPool} REP | NO: ${market?.noPool} REP (Total Pot: ${market?.totalPot} REP)`
+            ];
+            await client.sendMessage(message.conversationId, lines.join('\n'));
+          } else {
+            const err = await res.json();
+            await client.sendMessage(message.conversationId, `❌ **Bet Placement Failed**: ${err.error || 'Unknown error'}`);
+          }
+        } catch (err: any) {
+          console.error(`[Caspian Ingress] Error placing market bet: ${err.message}`);
+        }
+        return;
+      }
+
+      // Handle Single Market View (/aether market <id>)
+      if (message.text.trim().startsWith('/aether market ') && !message.text.trim().startsWith('/aether market create')) {
+        const idArg = message.text.replace('/aether market ', '').trim();
+        console.log(`[Caspian Ingress] Intercepted market view: "${idArg}"`);
+
+        try {
+          let betId = idArg;
+          if (idArg.length < 30) {
+            const match = await prisma.multiplayerBet.findFirst({
+              where: { id: { startsWith: idArg }, communityId: community.id, betType: 'PREDICTION_POOL' }
+            });
+            if (match) betId = match.id;
+          }
+
+          const market = await prisma.multiplayerBet.findUnique({
+            where: { id: betId },
+            include: { participants: true }
+          });
+
+          if (!market) {
+            await client.sendMessage(message.conversationId, `❌ Market \`${idArg}\` not found.`);
+            return;
+          }
+
+          const userPos = market.participants.find(p => p.userId === userId);
+          const userPosStr = userPos ? `${userPos.side} — ${userPos.stake} REP` : 'None';
+
+          const lines = [
+            `📊 **PREDICTION MARKET DETAILS**`,
+            ``,
+            `**Claim:** "${market.claim}"`,
+            `**Status:** \`${market.status}\``,
+            `**YES Pool:** ${market.yesPool} REP`,
+            `**NO Pool:** ${market.noPool} REP`,
+            `**Total Pot:** ${market.totalPot} REP`,
+            `**Participants:** ${market.participants.length}`,
+            `**Closes:** ${new Date(market.deadline).toUTCString()}`,
+            `**Your Position:** ${userPosStr}`
+          ];
+          await client.sendMessage(message.conversationId, lines.join('\n'));
+        } catch (err: any) {
+          console.error(`[Caspian Ingress] Error viewing market: ${err.message}`);
+        }
+        return;
+      }
+
       // Message Filtering
       const isCommand = message.text.startsWith('/aether commit') || message.text.startsWith('/aether bet ');
       const pendingKey = `clarify:${community.id}:${userId}:${message.conversationId}`;
+
+      // Clear pending clarify key if user explicitly issues a new /aether command
+      if (message.text.startsWith('/aether')) {
+        await redis.del(pendingKey);
+      }
+
       const hasPending = await redis.exists(pendingKey);
       
       if (!isCommand && !hasPending) {

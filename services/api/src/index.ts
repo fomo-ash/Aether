@@ -32,6 +32,19 @@ import { ImpactController } from './controllers/impact.controller';
 app.get('/api/impact', ImpactController.getImpactProfile);
 app.get('/api/impact/leaderboard', ImpactController.getLeaderboard);
 
+// Multiplayer routes (Phase 10)
+import { MultiplayerController } from './controllers/multiplayer.controller';
+app.post('/api/multiplayer/challenge', MultiplayerController.createChallenge);
+app.post('/api/multiplayer/challenge/accept', MultiplayerController.acceptChallenge);
+app.post('/api/multiplayer/challenge/cancel', MultiplayerController.cancelChallenge);
+app.get('/api/multiplayer/challenges', MultiplayerController.listChallenges);
+
+app.post('/api/multiplayer/market', MultiplayerController.createMarket);
+app.post('/api/multiplayer/market/join', MultiplayerController.joinMarket);
+app.post('/api/multiplayer/market/cancel', MultiplayerController.cancelMarket);
+app.get('/api/multiplayer/markets', MultiplayerController.listMarkets);
+app.get('/api/multiplayer/market/:id', MultiplayerController.getMarket);
+
 // New asynchronous check route (Phase 7)
 import { CheckController } from './controllers/check.controller';
 app.post('/api/check', CheckController.check);

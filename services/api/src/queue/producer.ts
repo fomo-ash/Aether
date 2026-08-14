@@ -14,6 +14,16 @@ export const verificationQueue = new Queue('verification-queue', { connection })
 export const messageQueue = new Queue('message-queue', { connection });
 export const webhookQueue = new Queue('webhook-queue', { connection });
 export const checkQueue = new Queue('check-queue', { connection });
+export const multiplayerQueue = new Queue('multiplayer-queue', { connection });
+
+export async function enqueueMultiplayerVerification(multiplayerBetId: string, conversationId?: string) {
+  await multiplayerQueue.add(
+    'verify-multiplayer',
+    { multiplayerBetId, conversationId },
+    { jobId: `mp-verify-${multiplayerBetId}` }
+  );
+  console.log(`[Producer] Enqueued auto-verification for multiplayer bet: ${multiplayerBetId}`);
+}
 
 /**
  * Schedules a verification job to run at a specific deadline.

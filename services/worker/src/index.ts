@@ -10,8 +10,9 @@ if (!process.env.REDIS_URL) {
 
 const connection = new Redis(process.env.REDIS_URL, { maxRetriesPerRequest: null });
 
-// Import check worker to start it (side-effect)
+// Import workers to start them (side-effect)
 import './check.worker';
+import './multiplayer.worker';
 
 // 1. Verification Worker
 const verificationWorker = new Worker('verification-queue', processVerificationJob, {
@@ -81,6 +82,31 @@ reconcilerQueue.add('sweep', {}, {
   },
   jobId: 'reconciler-sweep-job'
 });
+
+const multiplayerQueue = new Queue('multiplayer-queue', { connection });
+
+// Fast 5-second sweeper for overdue multiplayer bets & prediction markets
+setInterval(async () => {
+  try {
+    const overdueBets = await prisma.multiplayerBet.findMany({
+      where: {
+        status: { in: ['OPEN', 'ACTIVE'] },
+        deadline: { lte: new Date() }
+      },
+      take: 20
+    });
+
+    for (const b of overdueBets) {
+      await multiplayerQueue.add(
+        'verify-multiplayer',
+        { multiplayerBetId: b.id },
+        { jobId: `mp-verify-${b.id}` }
+      );
+    }
+  } catch (err: any) {
+    console.error('[Reconciler] Error sweeping multiplayer bets:', err.message);
+  }
+}, 5000);
 
 console.log('⚡ Aether Workers Started ⚡');
 console.log('- Verification Queue: Listening');

@@ -5,6 +5,7 @@ import { OutboundResponder } from './services/outbound-responder';
 import { GithubResolver, InaccessibleRepositoryError } from './services/github-resolver';
 import { OutcomeResolver } from './resolvers/outcome.resolver';
 import { BetSettlementService } from './services/bet-settlement.service';
+import { MultiplayerSettlementService } from './services/multiplayer-settlement.service';
 import * as crypto from 'crypto';
 
 const prisma = new PrismaClient();
@@ -174,8 +175,9 @@ async function applyResolution(commitment: any, status: string, evidencePartial:
 
   try {
     const bet = await prisma.bet.findUnique({ where: { commitmentId: commitment.id } });
+    const multiplayerBet = await prisma.multiplayerBet.findUnique({ where: { commitmentId: commitment.id } });
     
-    // If it's part of a bet, delegate to BetSettlementService instead of Legacy flow
+    // If it's part of a single-player bet, delegate to BetSettlementService
     if (bet) {
       await prisma.$transaction(async (tx: any) => {
         const updateResult = await tx.commitment.updateMany({
@@ -218,6 +220,46 @@ async function applyResolution(commitment: any, status: string, evidencePartial:
 
       // Call BetSettlementService to execute atomic Escrow transfers
       await BetSettlementService.settle(bet.id, status as 'FULFILLED' | 'MISSED' | 'EXPIRED');
+    } else if (multiplayerBet) {
+      // If it's part of a multiplayer bet, delegate to MultiplayerSettlementService
+      await prisma.$transaction(async (tx: any) => {
+        const updateResult = await tx.commitment.updateMany({
+          where: { id: commitment.id, status: 'AWAITING_VERIFICATION' },
+          data: { status: finalStatus }
+        });
+        if (updateResult.count === 0) throw new Error('CONCURRENCY_LOCKED');
+
+        const evidence = await tx.evidence.create({
+          data: {
+            commitmentId: commitment.id,
+            source: providerName,
+            observedState: evidencePartial.observedState || 'UNKNOWN',
+            payload: evidencePartial.payload || {},
+            metadata: evidencePartial.metadata || {}
+          }
+        });
+
+        const resolution = await tx.resolution.create({
+          data: {
+            commitmentId: commitment.id,
+            status: status as any,
+            result: status,
+            explanation: `Verified via ${providerName}. State: ${evidencePartial.observedState}`,
+            evidenceRefs: [evidence.id]
+          }
+        });
+        
+        await tx.event.create({
+          data: {
+            commitmentId: commitment.id,
+            eventType: `COMMITMENT_${status}`,
+            payload: { evidenceId: evidence.id, resolutionId: resolution.id }
+          }
+        });
+      });
+
+      // Call MultiplayerSettlementService to execute atomic Escrow transfers
+      await MultiplayerSettlementService.settle(multiplayerBet.id, status as any);
     } else {
       await prisma.$transaction(async (tx: any) => {
         const updateResult = await tx.commitment.updateMany({

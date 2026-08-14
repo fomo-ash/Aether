@@ -1,4 +1,4 @@
-﻿-- CreateEnum
+-- CreateEnum
 CREATE TYPE "RewardPoolTransactionType" AS ENUM ('INITIAL_FUNDING', 'BET_REWARD', 'BET_BOOTSTRAP_REWARD', 'BET_FORFEIT', 'MANUAL_ADJUSTMENT');
 
 -- CreateEnum

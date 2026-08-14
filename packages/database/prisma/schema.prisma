@@ -66,6 +66,22 @@ enum BetStatus {
   EXPIRED
 }
 
+enum MultiplayerBetType {
+  HEAD_TO_HEAD
+  PREDICTION_POOL
+}
+
+enum MultiplayerBetStatus {
+  OFFERED
+  OPEN
+  ACTIVE
+  LOCKED
+  RESOLVING
+  RESOLVED
+  CANCELLED
+  EXPIRED
+}
+
 // ----------------------------------------------------------------------------
 // MODELS
 // ----------------------------------------------------------------------------
@@ -78,13 +94,17 @@ model User {
   bootstrapBetsUsed Int      @default(0) @map("bootstrap_bets_used")
   createdAt         DateTime @default(now()) @map("created_at")
 
-  commitments         Commitment[]
-  reputationAccounts  ReputationAccount[]
-  bets                Bet[]
-  communityMembers    CommunityMember[]
-  identities          UserIdentity[]
-  githubInstallations UserGithubInstallation[]
-  ImpactAccount       ImpactAccount[]
+  commitments             Commitment[]
+  reputationAccounts      ReputationAccount[]
+  bets                    Bet[]
+  communityMembers        CommunityMember[]
+  identities              UserIdentity[]
+  githubInstallations     UserGithubInstallation[]
+  ImpactAccount           ImpactAccount[]
+  createdMultiplayerBets  MultiplayerBet[]            @relation("CreatedMultiplayerBets")
+  targetedMultiplayerBets MultiplayerBet[]            @relation("TargetedMultiplayerBets")
+  wonMultiplayerBets      MultiplayerBet[]            @relation("WonMultiplayerBets")
+  multiplayerParticipants MultiplayerBetParticipant[]
 
   @@map("users")
 }
@@ -119,6 +139,7 @@ model Community {
   githubInstallations CommunityGithubInstallation[]
   ImpactAccount       ImpactAccount[]
   CommunityRepository CommunityRepository[]
+  multiplayerBets     MultiplayerBet[]
 
   @@unique([platform, externalId])
   @@map("communities")
@@ -232,7 +253,8 @@ model Commitment {
   reputationTransactions ReputationTransaction[]
 
   // For Bets: A commitment might be part of a bet
-  bet Bet? @relation("BetCommitments")
+  bet            Bet?            @relation("BetCommitments")
+  multiplayerBet MultiplayerBet? @relation("MultiplayerBetCommitment")
 
   @@index([userId])
   @@index([communityId])
@@ -440,4 +462,66 @@ model CommunityRepository {
 
   @@unique([communityId, repositoryFullName])
   @@map("community_repositories")
+}
+
+// ----------------------------------------------------------------------------
+// MULTIPLAYER BETTING MODELS (Phase 10)
+// ----------------------------------------------------------------------------
+
+model MultiplayerBet {
+  id          String               @id @default(uuid())
+  communityId String               @map("community_id")
+  creatorId   String               @map("creator_id")
+  betType     MultiplayerBetType   @map("bet_type")
+  status      MultiplayerBetStatus @default(OFFERED)
+
+  claim           String
+  normalizedClaim String   @map("normalized_claim")
+  deadline        DateTime
+
+  targetStake Int @map("target_stake") // For H2H stake per side
+  totalPot    Int @default(0) @map("total_pot")
+  yesPool     Int @default(0) @map("yes_pool") // For pools
+  noPool      Int @default(0) @map("no_pool") // For pools
+  feeBps      Int @default(0) @map("fee_bps") // Basis points (500 = 5%)
+
+  targetUserId String? @map("target_user_id") // Targeted opponent (null = open)
+  winnerUserId String? @map("winner_user_id") // Winner (for H2H)
+  winningSide  String? @map("winning_side") // "YES" or "NO"
+
+  commitmentId String?   @unique @map("commitment_id")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  resolvedAt   DateTime? @map("resolved_at")
+
+  community  Community   @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  creator    User        @relation("CreatedMultiplayerBets", fields: [creatorId], references: [id], onDelete: Restrict)
+  targetUser User?       @relation("TargetedMultiplayerBets", fields: [targetUserId], references: [id], onDelete: SetNull)
+  winner     User?       @relation("WonMultiplayerBets", fields: [winnerUserId], references: [id], onDelete: SetNull)
+  commitment Commitment? @relation("MultiplayerBetCommitment", fields: [commitmentId], references: [id], onDelete: SetNull)
+
+  participants MultiplayerBetParticipant[]
+
+  @@index([communityId, status])
+  @@index([deadline])
+  @@map("multiplayer_bets")
+}
+
+model MultiplayerBetParticipant {
+  id               String   @id @default(uuid())
+  multiplayerBetId String   @map("multiplayer_bet_id")
+  userId           String   @map("user_id")
+  side             String // "YES" | "NO" | "CREATOR" | "OPPONENT"
+  stake            Int
+  payout           Int?
+  status           String   @default("ACTIVE")
+  joinedAt         DateTime @default(now()) @map("joined_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  multiplayerBet MultiplayerBet @relation(fields: [multiplayerBetId], references: [id], onDelete: Cascade)
+  user           User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([multiplayerBetId, userId])
+  @@index([multiplayerBetId])
+  @@map("multiplayer_bet_participants")
 }
