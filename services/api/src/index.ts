@@ -25,6 +25,12 @@ app.post('/api/commitments/:id/verify', CommitmentController.verify);
 
 // Reputation visibility route
 app.get('/api/reputation', ReputationController.getReputation);
+app.get('/api/reputation/leaderboard', ReputationController.getLeaderboard);
+
+// Impact visibility routes
+import { ImpactController } from './controllers/impact.controller';
+app.get('/api/impact', ImpactController.getImpactProfile);
+app.get('/api/impact/leaderboard', ImpactController.getLeaderboard);
 
 // New asynchronous check route (Phase 7)
 import { CheckController } from './controllers/check.controller';

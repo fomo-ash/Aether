@@ -84,6 +84,7 @@ model User {
   communityMembers    CommunityMember[]
   identities          UserIdentity[]
   githubInstallations UserGithubInstallation[]
+  ImpactAccount       ImpactAccount[]
 
   @@map("users")
 }
@@ -116,6 +117,8 @@ model Community {
   commitments         Commitment[]
   bets                Bet[]
   githubInstallations CommunityGithubInstallation[]
+  ImpactAccount       ImpactAccount[]
+  CommunityRepository CommunityRepository[]
 
   @@unique([platform, externalId])
   @@map("communities")
@@ -389,4 +392,52 @@ model CommunityGithubInstallation {
 
   @@id([communityId, githubInstallationId])
   @@map("community_github_installations")
+}
+
+// ----------------------------------------------------------------------------
+// IMPACT MODELS (Phase 9)
+// ----------------------------------------------------------------------------
+
+model ImpactAccount {
+  id          String   @id @default(uuid())
+  communityId String   @map("community_id")
+  userId      String   @map("user_id")
+  balance     Int      @default(0)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  community    Community           @relation(fields: [communityId], references: [id], onDelete: Restrict)
+  user         User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  transactions ImpactTransaction[]
+
+  @@unique([userId, communityId])
+  @@index([communityId, balance])
+  @@map("impact_accounts")
+}
+
+model ImpactTransaction {
+  id              String   @id @default(uuid())
+  impactAccountId String   @map("impact_account_id")
+  amount          Int
+  transactionType String   @map("transaction_type") // e.g., CONTRIBUTION_AWARD, MANUAL_ADJUSTMENT
+  reason          String
+  referenceKey    String   @unique @map("reference_key")
+  createdAt       DateTime @default(now()) @map("created_at")
+  metadata        Json?
+
+  impactAccount ImpactAccount @relation(fields: [impactAccountId], references: [id], onDelete: Restrict)
+
+  @@map("impact_transactions")
+}
+
+model CommunityRepository {
+  id                 String   @id @default(uuid())
+  communityId        String   @map("community_id")
+  repositoryFullName String   @map("repository_full_name")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@unique([communityId, repositoryFullName])
+  @@map("community_repositories")
 }

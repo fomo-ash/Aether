@@ -130,6 +130,23 @@ export class GithubController {
       });
       const githubUser = await userResponse.json();
       
+      // Save the user's GitHub identity so we can map webhook events to them
+      await prisma.userIdentity.upsert({
+        where: {
+          platform_externalId: {
+            platform: 'github',
+            externalId: githubUser.id.toString()
+          }
+        },
+        update: { userId: oauthState.userId },
+        create: {
+          userId: oauthState.userId,
+          platform: 'github',
+          externalId: githubUser.id.toString()
+        }
+      });
+
+      
       // 4. Retrieve Accessible Installations for this User
       const installationsResponse = await fetch('https://api.github.com/user/installations', {
         headers: {

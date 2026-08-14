@@ -122,9 +122,21 @@ async function bootstrap() {
           `Instantly verify a factual claim without creating any database records.`,
           `*Example: /aether check India won the 2011 Cricket World Cup*`,
           ``,
-          `**4. Reputation & Account**`,
-          `\`/aether rep\` (or \`/aether status\`)`,
-          `View your current REP balance, tier, and recent transaction history.`,
+          `📊 **REPUTATION**`,
+          `\`/aether rep\``,
+          `View your REP and tier.`,
+          ``,
+          `\`/aether leaderboard\``,
+          `Global REP leaderboard.`,
+          ``,
+          `\`/aether impact\``,
+          `View your community Impact.`,
+          ``,
+          `\`/aether impact leaderboard\``,
+          `Community Impact leaderboard.`,
+          ``,
+          `\`/aether bets\``,
+          `View active bets.`,
           ``,
           `💡 **Important Guidelines:**`,
           `- Aether supports **GitHub** tracking (Issues, PRs, Deployments) and **Web Search** (for facts/news).`,
@@ -181,17 +193,24 @@ async function bootstrap() {
             const summary = await response.json();
             
             const lines = [
-              `📊 **Reputation Summary**`,
+              `👤 **AETHER PROFILE**`,
+              ``,
+              `**REP**`,
+              `${summary.totalRep || summary.balance + summary.lockedBalance}`,
+              ``,
+              `**Available:** ${summary.balance} REP`,
+              `**Locked:** ${summary.lockedBalance} REP`,
               `**Tier:** ${summary.tier}`,
-              `**Balance:** ${summary.balance} REP`
+              `**Global Rank:** ${summary.globalRank ? '#' + summary.globalRank : 'Unranked'}`
             ];
 
-            if (summary.progressToNextTier !== null) {
-              lines.push(`**Progress to ${summary.nextTierName}:** ${summary.progressToNextTier}%`);
+            if (summary.communityImpact > 0) {
+              lines.push(``);
+              lines.push(`**COMMUNITY IMPACT**`);
+              lines.push(`${summary.communityImpact}`);
+              lines.push(`**Rank:** ${summary.impactRank ? '#' + summary.impactRank : 'Unranked'}`);
             }
-            
-            lines.push(`**Record:** ${summary.fulfilledCommitments} Fulfilled / ${summary.missedCommitments} Missed`);
-            
+
             if (summary.recentTransactions && summary.recentTransactions.length > 0) {
               lines.push(``);
               lines.push(`**Recent Changes:**`);
@@ -211,8 +230,146 @@ async function bootstrap() {
         return;
       }
 
+      // Handle Leaderboard Command
+      if (message.text.trim() === '/aether leaderboard') {
+        console.log(`[Caspian Ingress] Intercepted leaderboard command.`);
+        try {
+          const response = await fetch(`${AETHER_API_URL}/api/reputation/leaderboard`);
+          if (response.ok) {
+            const leaderboard = await response.json();
+            
+            const lines = [
+              `🏆 **AETHER REP LEADERBOARD**`,
+              ``
+            ];
+
+            leaderboard.forEach((entry: any) => {
+              lines.push(`${entry.rank}. ${entry.displayName} — ${entry.totalRep} REP`);
+            });
+
+            // If we wanted to, we could fetch user rank here, but we will leave it for /rep for simplicity
+            
+            await client.sendMessage(message.conversationId, lines.join('\n'));
+          } else {
+            console.error(`[Caspian Ingress] Failed to fetch leaderboard: ${response.status}`);
+          }
+        } catch (err: any) {
+          console.error(`[Caspian Ingress] Error fetching leaderboard: ${err.message}`);
+        }
+        return;
+      }
+
+      // Handle Impact Command
+      if (message.text.trim() === '/aether impact') {
+        console.log(`[Caspian Ingress] Intercepted impact command.`);
+        try {
+          const response = await fetch(`${AETHER_API_URL}/api/impact?userId=${userId}&communityId=${community.id}`);
+          if (response.ok) {
+            const summary = await response.json();
+            
+            const lines = [
+              `🌟 **YOUR IMPACT**`,
+              ``,
+              `**Community:** ${community.name}`,
+              ``,
+              `**Impact:** ${summary.impactScore}`,
+              `**Rank:** ${summary.rank ? '#' + summary.rank : 'Unranked'}`
+            ];
+
+            if (summary.recentContributions && summary.recentContributions.length > 0) {
+              lines.push(``);
+              lines.push(`**Recent Contributions:**`);
+              summary.recentContributions.forEach((tx: any) => {
+                const sign = tx.amount >= 0 ? '+' : '';
+                lines.push(`- \`${sign}${tx.amount}\` : ${tx.reason}`);
+              });
+            }
+
+            await client.sendMessage(message.conversationId, lines.join('\n'));
+          } else {
+            console.error(`[Caspian Ingress] Failed to fetch impact: ${response.status}`);
+          }
+        } catch (err: any) {
+          console.error(`[Caspian Ingress] Error fetching impact: ${err.message}`);
+        }
+        return;
+      }
+
+      // Handle Impact Leaderboard Command
+      if (message.text.trim() === '/aether impact leaderboard') {
+        console.log(`[Caspian Ingress] Intercepted impact leaderboard command.`);
+        try {
+          const response = await fetch(`${AETHER_API_URL}/api/impact/leaderboard?communityId=${community.id}`);
+          if (response.ok) {
+            const leaderboard = await response.json();
+            
+            const lines = [
+              `🌟 **COMMUNITY IMPACT**`,
+              ``,
+              `**${community.name}**`,
+              ``
+            ];
+
+            leaderboard.forEach((entry: any) => {
+              lines.push(`${entry.rank}. ${entry.displayName} — ${entry.impactScore}`);
+            });
+            
+            await client.sendMessage(message.conversationId, lines.join('\n'));
+          } else {
+            console.error(`[Caspian Ingress] Failed to fetch impact leaderboard: ${response.status}`);
+          }
+        } catch (err: any) {
+          console.error(`[Caspian Ingress] Error fetching impact leaderboard: ${err.message}`);
+        }
+        return;
+      }
+
+      // Handle Bets Listing Command
+      if (message.text.trim() === '/aether bets') {
+        console.log(`[Caspian Ingress] Intercepted bets listing command.`);
+        try {
+          const bets = await prisma.bet.findMany({
+            where: {
+              creatorId: userId,
+              communityId: community.id,
+              status: { in: ['ACTIVE', 'AWAITING_RESOLUTION', 'EVIDENCE_COLLECTION'] }
+            },
+            include: {
+              commitment: true
+            },
+            orderBy: { createdAt: 'desc' },
+            take: 5
+          });
+
+          if (bets.length === 0) {
+            await client.sendMessage(message.conversationId, `🎲 **ACTIVE BETS**\n\nYou currently have no active bets in this community.\nUse \`/aether bet <amount> REP on <multiplier>x <outcome>\` to place a bet!`);
+            return;
+          }
+
+          const lines = [
+            `🎲 **ACTIVE BETS (${bets.length})**`,
+            ``
+          ];
+
+          bets.forEach((bet, idx) => {
+            const claim = bet.commitment?.normalizedClaim || bet.commitment?.statement || 'Unknown bet';
+            const multiplierStr = bet.multiplier ? `${bet.multiplier}x` : 'Bootstrap';
+            const deadlineStr = bet.deadline ? new Date(bet.deadline).toUTCString() : 'N/A';
+            lines.push(`**${idx + 1}. ${claim}**`);
+            lines.push(`- Stake: ${bet.stake} REP | Multiplier: ${multiplierStr} | Payout: ${bet.potentialPayout} REP`);
+            lines.push(`- Status: \`${bet.status}\` | Deadline: ${deadlineStr}`);
+            lines.push(``);
+          });
+
+          await client.sendMessage(message.conversationId, lines.join('\n'));
+        } catch (err: any) {
+          console.error(`[Caspian Ingress] Error fetching bets: ${err.message}`);
+        }
+        return;
+      }
+
       // Message Filtering
-      const isCommand = message.text.startsWith('/aether commit') || message.text.startsWith('/aether bet');
+      const isCommand = message.text.startsWith('/aether commit') || message.text.startsWith('/aether bet ');
       const pendingKey = `clarify:${community.id}:${userId}:${message.conversationId}`;
       const hasPending = await redis.exists(pendingKey);
       

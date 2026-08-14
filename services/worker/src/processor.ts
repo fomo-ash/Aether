@@ -107,9 +107,14 @@ export async function processVerificationJob(job: any) {
   return { success: true, result: resolutionStatus };
 }
 
+import { ContributionEvaluator } from './services/contribution.evaluator';
+
 export async function processWebhookJob(job: any) {
   const event: NormalizedWebhookEvent = job.data;
   console.log(`[Webhook] Processing event ${event.eventId} for target ${event.target}`);
+
+  // Award Community Impact (Phase 9)
+  await ContributionEvaluator.evaluate(event);
 
   // Find AWAITING_VERIFICATION commitments that care about this target
   const commitments = await prisma.commitment.findMany({
