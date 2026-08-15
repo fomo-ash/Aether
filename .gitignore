@@ -3,8 +3,24 @@ dist
 .next
 .turbo
 .env
-public/
-docs/
+.env.*
+*.log
+.system_generated
+
+# Community local files & test scripts
 community/
-services/worker/scripts
+services/worker/scripts/
 services/caspian/src/test-caspian.ts
+
+# Screenshots and temporary media
+public/*.png
+public/*.jpg
+public/*.jpeg
+
+# Internal phase plans, code reviews, and scratch notes
+docs/phase-*.md
+docs/Phase-*
+docs/CODE_REVIEW.md
+docs/PROJECT_STATUS.md
+docs/production/
+docs/responsibility-ethics=history.md
