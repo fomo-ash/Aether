@@ -9,94 +9,94 @@
 **Aether** turns developer promises, technical milestones, and factual debates into verifiable, stake-backed actions. Whether in **Discord** or **Telegram**, Aether autonomously evaluates natural-language commitments, underwrites prediction markets, manages peer-to-peer 1v1 challenges, and maintains an uncheatable developer reputation ledger.
 
 ```mermaid
-graph TD
-    %% Omnichannel Ingress Layer
-    subgraph Ingress ["🌐 Omnichannel Ingress (Caspian SDK)"]
-        Discord["👾 Discord Servers & DMs"]
-        Telegram["✈️ Telegram Groups & DMs"]
-        CaspianGateway["📡 Caspian Gateway (trycaspianai.com)"]
-        CommClient["⚙️ Caspian CommClient Ingress<br/><i>(services/caspian)</i>"]
+flowchart TD
+    %% Ingress Layer
+    subgraph Ingress ["Omnichannel Ingress - Caspian SDK"]
+        Discord["Discord Guilds and DMs"]
+        Telegram["Telegram Groups and DMs"]
+        CaspianGateway["Caspian Gateway"]
+        CommClient["Caspian CommClient Adapter"]
     end
 
     Discord -->|Events| CaspianGateway
     Telegram -->|Events| CaspianGateway
-    CaspianGateway -->|Long-Polling Stream| CommClient
+    CaspianGateway -->|Event Stream| CommClient
 
-    %% Identity & Isolation
-    subgraph Routing ["🛡️ Identity & Context Normalizer"]
-        IdResolver["Identity Resolver<br/><code>[platform, externalId]</code>"]
-        CmdParser["Slash Command Router & Normalizer<br/><code>/aether@bot cmd ➔ /aether cmd</code>"]
+    %% Routing Layer
+    subgraph Routing ["Identity and Context Normalization"]
+        IdResolver["Platform Identity Resolver"]
+        CmdParser["Slash Command Normalizer"]
     end
 
     CommClient --> IdResolver
     IdResolver --> CmdParser
 
     %% Core Application Layer
-    subgraph CoreEngine ["⚡ Aether Core API (services/api)"]
-        API["REST API Router (:3250)"]
-        MultiplayerCtrl["Multiplayer Controller<br/><i>(1v1 Challenges & Prediction Pools)</i>"]
-        ReputationCtrl["Reputation & Impact Controller"]
+    subgraph CoreEngine ["Aether Core Engine"]
+        API["REST API Router"]
+        MultiplayerCtrl["Multiplayer Controller - 1v1 and Pools"]
+        ReputationCtrl["Reputation and Impact Controller"]
         CheckCtrl["Stateless Fact-Check Controller"]
-        CommitmentParser["NLP Commitment Parser & Intent Engine"]
+        CommitmentParser["NLP Commitment Parser"]
     end
 
-    CmdParser -->|Direct / API Call| API
+    CmdParser --> API
     API --> MultiplayerCtrl
     API --> ReputationCtrl
     API --> CheckCtrl
     API --> CommitmentParser
 
-    %% Asynchronous Execution & Verification Layer
-    subgraph WorkerEngine ["⚙️ Async Execution Engine (services/worker)"]
-        BullMQ["📦 BullMQ Job Queues<br/><i>(message-queue, multiplayer-queue)</i>"]
-        Sweeper["⏱️ 5-Second Overdue Sweeper"]
-        Verifier["🔬 Multi-Source Verification Registry"]
-        Resolver["⚖️ Outcome Resolver & Evidence Scorer"]
-        Settler["💰 Multiplayer Settlement Engine<br/><i>(5% Fee, Proportional Pot, Integer Dust)</i>"]
+    %% Worker and Execution Layer
+    subgraph WorkerEngine ["Async Execution and Verification Engine"]
+        BullMQ["BullMQ Job Queues"]
+        Sweeper["5-Second Overdue Sweeper"]
+        Verifier["Deterministic Verification Registry"]
+        Resolver["Outcome Resolver and Evidence Scorer"]
+        Settler["Multiplayer Settlement Engine"]
     end
 
-    MultiplayerCtrl -->|Enqueue| BullMQ
-    CommitmentParser -->|Enqueue| BullMQ
+    MultiplayerCtrl -->|Enqueue Job| BullMQ
+    CommitmentParser -->|Enqueue Job| BullMQ
     BullMQ --> Verifier
-    Sweeper -->|Poll Expired Bets| Verifier
+    Sweeper -->|Poll Expired Markets| Verifier
 
     %% External Sources of Truth
-    subgraph ExternalSources ["🌐 External Sources of Truth"]
-        GitHub["🐙 GitHub App API<br/><i>(PRs, Issues, Commits)</i>"]
-        Tavily["🔎 Tavily AI Multi-Source Web Search"]
-        LLM["🧠 LLM Evidence Scorer<br/><i>(Featherless / OpenAI API)</i>"]
+    subgraph ExternalSources ["External Sources of Truth"]
+        GitHub["GitHub App API - PRs, Issues, Commits"]
+        Tavily["Tavily AI Multi-Source Web Search"]
+        LLM["LLM Evidence Evaluator"]
     end
 
-    Verifier -->|Fetch Live Status| GitHub
+    Verifier -->|Query PR/Issue Status| GitHub
     Verifier -->|Scrape Web Evidence| Tavily
     CheckCtrl -->|Scrape Web Evidence| Tavily
     Tavily --> Resolver
     GitHub --> Resolver
-    Resolver -->|Verify with Prompt| LLM
+    Resolver -->|Score Evidence| LLM
     Resolver --> Settler
 
     %% Data & State Store
-    subgraph DataStore ["💾 Persistence & Ledger Layer"]
-        Postgres[("🐘 PostgreSQL 15 (Prisma ORM)<br/>• UserIdentities & Communities<br/>• ReputationAccounts & Ledgers<br/>• DeveloperImpact Proof-of-Work<br/>• MultiplayerBets & Pools")]
-        Redis[("⚡ Redis 7<br/>• BullMQ Job State<br/>• Channel Memory (mp_conv:id)<br/>• Concurrency Locks")]
+    subgraph DataStore ["Persistence and Ledger Layer"]
+        Postgres["PostgreSQL 15 - Prisma ORM<br/>Dual Rep and Impact Accounts, Bets, Pools"]
+        Redis["Redis 7<br/>BullMQ State, Conversation Memory, Locks"]
     end
 
-    Settler -->|Atomic Transaction & State Update| Postgres
-    MultiplayerCtrl -->|Lock Escrow Stakes| Postgres
-    ReputationCtrl -->|Read Balances & Ranks| Postgres
-    BullMQ -.->|Queue State| Redis
-    Sweeper -.->|Lock Coordination| Redis
+    Settler -->|Atomic Transaction| Postgres
+    MultiplayerCtrl -->|Escrow Stake Lock| Postgres
+    ReputationCtrl -->|Read Balances and Standings| Postgres
+    BullMQ -.-> Redis
+    Sweeper -.-> Redis
 
     %% Outbound Messaging
-    subgraph Outbound ["📤 Outbound Notification Pipeline"]
-        Responder["📢 OutboundResponder"]
+    subgraph Outbound ["Outbound Response Pipeline"]
+        Responder["OutboundResponder Service"]
     end
 
-    Settler -->|Trigger Result Embed| Responder
-    CheckCtrl -->|Direct Result| Responder
-    Responder -->|client.sendMessage(convId, text)| CommClient
-    CommClient -.->|Deliver Result Embed| Discord
-    CommClient -.->|Deliver Result Embed| Telegram
+    Settler -->|Resolution Embed| Responder
+    CheckCtrl -->|Result Summary| Responder
+    Responder -->|sendMessage| CommClient
+    CommClient -.-> Discord
+    CommClient -.-> Telegram
 ```
 
 ---

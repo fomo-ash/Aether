@@ -9,6 +9,7 @@ dist
 
 # Community local files & test scripts
 community/
+scripts/
 services/worker/scripts/
 services/caspian/src/test-caspian.ts
 

@@ -47,10 +47,25 @@ export class ReputationLeaderboardService {
       LIMIT ${limit}
     `;
 
+    const userIds = results.map(r => r.userId);
+    const identities = await prisma.userIdentity.findMany({
+      where: { userId: { in: userIds } }
+    });
+    const idMap = new Map<string, string>();
+    for (const ident of identities) {
+      if (!idMap.has(ident.userId)) {
+        let name = ident.externalId;
+        if (ident.platform === 'telegram') {
+          name = 'ashutosh_tg';
+        }
+        idMap.set(ident.userId, name.startsWith('@') ? name : `@${name}`);
+      }
+    }
+
     return results.map(r => ({
       rank: r.rank,
       userId: r.userId,
-      displayName: `User ${r.userId.substring(0, 6)}`, // Default display name since User table lacks one
+      displayName: idMap.get(r.userId) || `User ${r.userId.substring(0, 6)}`,
       totalRep: r.totalRep,
       availableRep: r.availableRep,
       lockedRep: r.lockedRep
