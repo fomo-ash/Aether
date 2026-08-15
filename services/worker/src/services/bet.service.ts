@@ -88,7 +88,7 @@ export class BetService {
           data: {
             reputationAccountId: account.id,
             amount: 100,
-            transactionType: 'AIRDROP',
+            transactionType: TransactionType.MANUAL_ADJUSTMENT,
             reason: 'Initial joining airdrop (Test Phase)',
             referenceKey: `airdrop_${data.userId}_${data.communityId}`
           }

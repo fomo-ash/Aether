@@ -68,6 +68,8 @@ services:
       - REDIS_URL=redis://redis:6379
       - AETHER_API_URL=http://api:3250
       - CASPIAN_API_KEY=${CASPIAN_API_KEY:-}
+      - CASPIAN_BASE_URL=${CASPIAN_BASE_URL:-}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
     depends_on:
       - postgres
       - redis

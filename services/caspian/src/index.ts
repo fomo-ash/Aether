@@ -61,6 +61,25 @@ async function bootstrap() {
     baseUrl: process.env.CASPIAN_BASE_URL || 'https://api.trycaspianai.com'
   });
 
+  // Connect Telegram if TELEGRAM_BOT_TOKEN is configured
+  if (process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_BOT_TOKEN.trim() !== '') {
+    const botToken = process.env.TELEGRAM_BOT_TOKEN.trim();
+    try {
+      console.log(`[Caspian Ingress] Connecting Telegram bot with Caspian SDK...`);
+      const conn = await client.connectTelegram({ botToken });
+      console.log(`[Caspian Ingress] Telegram connected successfully: ${conn.address || conn.id} (Status: ${conn.status})`);
+    } catch (err: any) {
+      const errMsg = err.message || String(err);
+      if (errMsg.includes('409') || err.status === 409) {
+        console.log(`[Caspian Ingress] Telegram bot token is already registered/active on Caspian project gateway.`);
+      } else {
+        console.error(`[Caspian Ingress] ERROR connecting Telegram bot to Caspian gateway: ${errMsg}`);
+      }
+    }
+  } else {
+    console.log(`[Caspian Ingress] TELEGRAM_BOT_TOKEN not provided. Telegram integration remains inactive.`);
+  }
+
   client.onMessage(async (message: any) => {
     try {
       const receivedAt = Date.now();
@@ -68,10 +87,17 @@ async function bootstrap() {
         return;
       }
 
-      console.log(`\n[Caspian Ingress] Received Command: "${message.text}"`);
+      // Normalize Telegram group slash commands (e.g. "/aether@AetherVerifierBot rep" -> "/aether rep")
+      let cleanText = message.text.trim();
+      if (cleanText.startsWith('/aether@')) {
+        cleanText = cleanText.replace(/^\/aether@\w+/i, '/aether');
+      }
+      message.text = cleanText;
+
+      console.log(`\n[Caspian Ingress] Received Command: "${message.text}" (Platform: ${message.channel || 'unknown'})`);
 
       const externalUserId = (message.sender?.id || message.sender?.address || "unknown").toString();
-      const platform = message.channel; // 'discord', 'email', etc.
+      const platform = message.channel; // 'discord', 'telegram', 'email', etc.
       const externalCommunityId = message.connectionId;
 
       if (!externalCommunityId) {
@@ -137,7 +163,7 @@ async function bootstrap() {
       const userId = identity.userId;
 
       // Handle Help Command
-      if (message.text.trim() === '/aether') {
+      if (message.text.trim() === '/aether' || message.text.trim() === '/aether help') {
         console.log(`[Caspian Ingress] Intercepted help command.`);
         const helpLines = [
           `🤖 **Aether: The Autonomous AI Verifier**`,

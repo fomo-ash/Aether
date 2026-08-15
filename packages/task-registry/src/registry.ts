@@ -19,4 +19,4 @@ export function hasTask(id: string): boolean {
 
 export function listTasks(): TaskMetadata[] {
   return Array.from(registry.values());
-}\n
+}
