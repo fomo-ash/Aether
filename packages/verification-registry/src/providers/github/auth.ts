@@ -21,13 +21,14 @@ export class GithubAuthFactory {
       throw new Error('Configuration error: VerificationContext config is missing githubInstallationId.');
     }
 
-    // Safely normalize private key newlines and strip surrounding quotes
-    let privateKey = privateKeyRaw.replace(/\\n/g, '\n');
+    // Safely normalize private key: strip quotes first, then replace escaped newlines
+    let privateKey = privateKeyRaw.trim();
     if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
       privateKey = privateKey.slice(1, -1);
     } else if (privateKey.startsWith("'") && privateKey.endsWith("'")) {
       privateKey = privateKey.slice(1, -1);
     }
+    privateKey = privateKey.replace(/\\n/g, '\n').replace(/\\r/g, '');
 
     console.log(`[Github Auth] Using App Installation ID: ${githubInstallationId}`);
 

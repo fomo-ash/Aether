@@ -75,22 +75,44 @@ export class GithubProvider implements VerificationProvider {
     if (!match) throw new Error('Invalid target format for github.pr_merged. Expected owner/repo#pr_number');
     const [, owner, repo, pull_number] = match;
 
-    const { data } = await octokit.pulls.get({ owner, repo, pull_number: parseInt(pull_number, 10) });
+    try {
+      const { data } = await octokit.pulls.get({ owner, repo, pull_number: parseInt(pull_number, 10) });
 
-    return {
-      source: this.name,
-      observedState: data.merged ? 'merged' : data.state,
-      externalIdentifier: target,
-      payload: {
-        id: data.id,
-        number: data.number,
-        state: data.state,
-        merged: data.merged,
-        merged_at: data.merged_at,
-        closed_at: data.closed_at,
-      },
-      metadata: { sourceUrl: data.html_url }
-    };
+      return {
+        source: this.name,
+        observedState: data.merged ? 'merged' : (data.state === 'closed' ? 'closed' : 'open'),
+        externalIdentifier: target,
+        payload: {
+          id: data.id,
+          number: data.number,
+          state: data.state,
+          merged: data.merged,
+          merged_at: data.merged_at,
+          closed_at: data.closed_at,
+        },
+        metadata: { sourceUrl: data.html_url }
+      };
+    } catch (pullErr: any) {
+      if (pullErr.status === 404 || pullErr.message?.includes('Not Found')) {
+        const { data } = await octokit.issues.get({ owner, repo, issue_number: parseInt(pull_number, 10) });
+        const isMerged = data.pull_request?.merged_at ? true : (data.state === 'closed');
+        return {
+          source: this.name,
+          observedState: isMerged ? (data.pull_request ? 'merged' : 'closed') : 'open',
+          externalIdentifier: target,
+          payload: {
+            id: data.id,
+            number: data.number,
+            state: data.state,
+            merged: !!data.pull_request?.merged_at,
+            closed_at: data.closed_at,
+            created_at: data.created_at,
+          },
+          metadata: { sourceUrl: data.html_url }
+        };
+      }
+      throw pullErr;
+    }
   }
 
   private async verifyCheckRun(octokit: any, target: string): Promise<Partial<EvidenceData>> {
